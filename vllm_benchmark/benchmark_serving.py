@@ -34,7 +34,7 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import numpy as np
-from backend_request_func import (ASYNC_REQUEST_FUNCS, RequestFuncInput,
+from .backend_request_func import (ASYNC_REQUEST_FUNCS, RequestFuncInput,
                                   RequestFuncOutput)
 from tqdm.asyncio import tqdm
 from transformers import PreTrainedTokenizerBase
@@ -42,7 +42,7 @@ from transformers import PreTrainedTokenizerBase
 try:
     from vllm.transformers_utils.tokenizer import get_tokenizer
 except ImportError:
-    from backend_request_func import get_tokenizer
+    from .backend_request_func import get_tokenizer
 
 try:
     from vllm.utils import FlexibleArgumentParser
@@ -58,6 +58,7 @@ class BenchmarkMetrics:
     request_throughput: float
     output_throughput: float
     total_token_throughput: float
+    mean_request_throughput: float
     mean_ttft_ms: float
     median_ttft_ms: float
     std_ttft_ms: float
@@ -248,6 +249,7 @@ def calculate_metrics(
     actual_output_lens: List[int] = []
     total_input = 0
     completed = 0
+    total_request_throughput = 0
     itls: List[float] = []
     tpots: List[float] = []
     ttfts: List[float] = []
@@ -269,7 +271,9 @@ def calculate_metrics(
             itls += outputs[i].itl
             ttfts.append(outputs[i].ttft)
             e2els.append(outputs[i].latency)
+            total_request_throughput += outputs[i].output_len/outputs[i].latency
             completed += 1
+            
         else:
             actual_output_lens.append(0)
 
@@ -285,6 +289,7 @@ def calculate_metrics(
         request_throughput=completed / dur_s,
         output_throughput=sum(actual_output_lens) / dur_s,
         total_token_throughput=(total_input + sum(actual_output_lens)) / dur_s,
+        mean_request_throughput=total_request_throughput / completed,
         mean_ttft_ms=np.mean(ttfts or 0) *
         1000,  # ttfts is empty if streaming is not supported by backend
         std_ttft_ms=np.std(ttfts or 0) * 1000,
@@ -491,7 +496,7 @@ async def benchmark(
 
 
 def main(args: argparse.Namespace):
-    print(args)
+    
     random.seed(args.seed)
     np.random.seed(args.seed)
 
@@ -633,8 +638,9 @@ def main(args: argparse.Namespace):
         with open(file_name, "w") as outfile:
             json.dump(result_json, outfile)
 
-
-if __name__ == "__main__":
+        return result_json
+    
+def get_args():
     parser = FlexibleArgumentParser(
         description="Benchmark the online serving throughput.")
     parser.add_argument(
@@ -823,4 +829,46 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    return args
+def run_benchmark(model, input_len, output_len, num_prompts, base_url):
+    # args = get_args()
+    class BenchmarkArgs:
+        def __init__(self, model, input_len, output_len, num_prompts, base_url):
+            self.model = model
+            self.tokenizer = model
+            self.num_prompts = num_prompts
+            self.seed = 42
+            self.disable_tqdm = False
+            self.backend = "vllm"
+            self.percentile_metrics = "ttft,tpot,itl"
+            self.metric_percentiles = "95"
+            self.base_url = base_url
+            self.endpoint = "/completions"
+            self.best_of = 1
+            self.use_beam_search = False
+            self.dataset = None
+            self.dataset_name = "random"
+            self.dataset_path = None
+            self.sharegpt_output_len = None
+            self.sonnet_input_len = 550
+            self.sonnet_output_len = 150
+            self.sonnet_prefix_len = 200
+            self.random_input_len = input_len
+            self.random_output_len = output_len
+            self.random_range_ratio = 1.0
+            self.request_rate = float("inf")
+            self.trust_remote_code = True
+            self.profile = False
+            self.save_result = False
+            self.metadata = None
+            self.result_dir = "./results"
+            self.result_filename = None
+
+    args = BenchmarkArgs(model, input_len, output_len, num_prompts, base_url)
+    
+    return main(args)
+
+if __name__ == "__main__":
+    args = get_args()
     main(args)
