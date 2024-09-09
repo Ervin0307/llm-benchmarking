@@ -282,7 +282,7 @@ def run_token_benchmark(
     results_dir: str = '',
     user_metadata: Dict[str, Any] = {},
     llm_api: str = 'openai',
-    test_timeout_s: int = 90,
+    test_timeout_s: int = 600,
     
 ):
     """
