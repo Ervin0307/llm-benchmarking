@@ -108,7 +108,7 @@ def format_llmperf_result(result):
 
 
 def run_benchmark(model, base_url, input_token, output_token, concurrency):
-    script = "llmperf"
+    script = args.benchmark_script
     # Set environment variables directly
     os.environ["OPENAI_API_KEY"] = "secret_abcdefg"
     os.environ["OPENAI_API_BASE"] = base_url
@@ -150,12 +150,23 @@ def deploy_model(model_name, docker_image, port, extra_args):
     try:
         # Step 1: Deploy the model using Docker
         print(f"Deploying {model_name} with image {docker_image}...")
+        print(" ".join([
+            "docker", "run", 
+            "-d", "-it", "--rm",
+            "--privileged", "--network=host", 
+            *[f"-e={env_value}" for env_value in args.env_values.split(',')],
+            "-v", f"{os.path.expanduser('~')}/.cache:/root/.cache",
+            docker_image, 
+            "--model", model_name,
+            "--port", port,
+            *extra_args.split()
+        ]))
         container = subprocess.run([
             "docker", "run", 
             "-d", "-it", "--rm",
             "--privileged", "--network=host", 
-            "-e", "HF_TOKEN=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", 
-            "-v", "/home/ditto-bud/.cache:/root/.cache", 
+            *([f"-e={env_value}" for env_value in args.env_values.split(',')] if args.env_values else []),
+            "-v", f"{os.path.expanduser('~')}/.cache:/root/.cache",
             docker_image, 
             "--model", model_name,
             "--port", port,
@@ -204,7 +215,10 @@ def create_config(args):
 
 def main(args):
     base_url = f"http://localhost:{args.port}/v1"
-    container_id = deploy_model(args.model, args.docker_image, args.port, args.extra_args)
+    if args.docker_image:
+        container_id = deploy_model(args.model, args.docker_image, args.port, args.extra_args)
+    else:
+        container_id = None
 
     results_dir = "results"
     os.makedirs(results_dir, exist_ok=True)
@@ -222,8 +236,8 @@ def main(args):
     except Exception as e:
         print(f"Error during benchmark: {e}")
     finally:
-        pass
-        remove_container(container_id)
+        if container_id:
+            remove_container(container_id)
     
     create_summary(results, results_dir)
 
@@ -240,7 +254,7 @@ if __name__ == "__main__":
         "--model", type=str, required=True, help="The model to use for this load test."
     )
     args.add_argument(
-        "--docker-image", type=str, required=True, help="The engine image to be used for the testing."
+        "--docker-image", type=str, default=None, help="The engine image to be used for the testing."
     )
     args.add_argument(
         "--port", type=str, default="8000", help="The port where the engine will be running"
@@ -257,6 +271,13 @@ if __name__ == "__main__":
     args.add_argument(
         "--extra-args", type=str, default="", help="Extra arguments to be passed to the engine"
     )
+    args.add_argument(
+        "--env-values", type=str, default="", help="Environment values to be set for the benchmark" 
+    )
+    args.add_argument(
+        "--benchmark-script", type=str, default="llmperf", help="The benchmark script to be used for the testing."
+    )
+
 
     args = args.parse_args()
 
