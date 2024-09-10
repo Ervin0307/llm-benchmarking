@@ -23,15 +23,15 @@ def create_summary(results, results_dir):
         summary['Mean Output Tokens'] = result['output_tokens']
         summary['Concurrent Requests'] = result['concurrency']
         summary['Completed Requests'] = result['completed']
-        summary['Duration'] = round(result['duration'], 2)
-        summary['Request Throughput per Min'] = round(result['request_throughput_per_min'], 2)
-        summary['Output Token Throughput'] = round(result['output_throughput'], 2)
-        summary['Output Token Throughput per User'] = round(result['output_throughput_per_user'], 2)
-        summary['Mean End to End Latency'] = round(result['mean_end_to_end_latency'], 2)
-        summary['Mean TTFT'] = round(result['mean_ttft_ms'], 2)
-        summary['P95 TTFT'] = round(result['p95_ttft_ms'], 2)
-        summary['Mean Inter Token Latency'] = round(result['mean_itl_ms'], 2)
-        summary['P95 Inter Token Latency'] = round(result['p95_itl_ms'], 2)
+        summary['Duration (s)'] = round(result['duration'], 2)
+        summary['Request Throughput (req/min)'] = round(result['request_throughput_per_min'], 2)
+        summary['Output Token Throughput (tok/s)'] = round(result['output_throughput'], 2)
+        summary['Output Token Throughput per User (tok/s)'] = round(result['output_throughput_per_user'], 2)
+        summary['Mean End to End Latency (s)'] = round(result['mean_end_to_end_latency'], 2)
+        summary['Mean TTFT (ms)'] = round(result['mean_ttft_ms'], 2)
+        summary['P95 TTFT (ms)'] = round(result['p95_ttft_ms'], 2)
+        summary['Mean Inter Token Latency (ms)'] = round(result['mean_itl_ms'], 2)
+        summary['P95 Inter Token Latency (ms)'] = round(result['p95_itl_ms'], 2)
 
         summary_list.append(summary)
 
@@ -199,7 +199,7 @@ def create_config(args):
 
 def main(args):
     base_url = f"http://localhost:{args.port}/v1"
-    # container_id = deploy_model(args.model, args.docker_image, args.port, args.extra_args)
+    container_id = deploy_model(args.model, args.docker_image, args.port, args.extra_args)
 
     results_dir = "results"
     os.makedirs(results_dir, exist_ok=True)
@@ -218,14 +218,14 @@ def main(args):
         print(f"Error during benchmark: {e}")
     finally:
         pass
-        # remove_container(container_id)
+        remove_container(container_id)
     
     create_summary(results, results_dir)
 
 if __name__ == "__main__":
 
     '''
-    python benchmark/engine_benchmark.py --model <model> --docker-image <docker-image> --port <port> --input-tokens <input-tokens> --output-tokens <output-tokens> --concurrency <concurrency>
+    python benchmark/auto_benchmark.py --model <model> --docker-image <docker-image> --port <port> --input-tokens <input-tokens> --output-tokens <output-tokens> --concurrency <concurrency>
     '''
     args = argparse.ArgumentParser(
         description="Run a token throughput and latency benchmark."

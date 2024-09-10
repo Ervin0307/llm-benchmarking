@@ -12,5 +12,5 @@ pip install -r requirements.txt
 ## Run
 
 ```bash
-python engine_bemchmark.py --model meta-llama/Meta-Llama-3-8B-Instruct --docker-image IMAGE_ID --input-tokens 100 --output-tokens 100 --concurrency 1
+python auto_bemchmark.py --model meta-llama/Meta-Llama-3-8B-Instruct --docker-image IMAGE_ID --input-tokens 100 --output-tokens 100 --concurrency 1
 ```
