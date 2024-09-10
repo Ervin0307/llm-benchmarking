@@ -1,3 +1,4 @@
+import re
 import requests
 import argparse
 import time
@@ -40,7 +41,11 @@ def create_summary(results, results_dir):
         return
 
     # Define the CSV file path
-    csv_file_path = os.path.join(results_dir, "benchmark_summary.csv")
+    filename = f"{results[0]['model']}"
+    filename = re.sub(r"[^\w\d-]+", "-", filename)
+    filename = re.sub(r"-{2,}", "-", filename)
+    
+    csv_file_path = os.path.join(results_dir, f"{filename}_summary.csv")
 
     # Check if the file exists to determine if we need to write headers
     file_exists = os.path.isfile(csv_file_path)
