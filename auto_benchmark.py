@@ -200,8 +200,8 @@ def create_config(args):
     concurrencies = [int(x) for x in args.concurrency.split(',')]
 
     for input_token in input_tokens:
-        if input_token < 50:
-            print("Skipping input token: ", input_token, " because it is less than 50")
+        if input_token < 20:
+            print("Skipping input token: ", input_token, " because it is less than 20")
             continue
         for output_token in output_tokens:
             for concurrency in concurrencies:
