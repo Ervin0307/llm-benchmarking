@@ -16,14 +16,14 @@ class RecordFunctionTracer:
         self.profiler = torch.profiler.profile(
             activities=[
                 torch.profiler.ProfilerActivity.CPU,
-                torch.profiler.ProfilerActivity.CUDA,
+                # torch.profiler.ProfilerActivity.CUDA,
             ],
         )
         self.profiler.__enter__()
 
     def __exit__(self, *args):
         self.profiler.__exit__(None, None, None)
-        torch.cuda.synchronize()
+        # torch.cuda.synchronize()
         self.profiler.export_chrome_trace(self.trace_path)
 
     def find_children(self, trace, event):
