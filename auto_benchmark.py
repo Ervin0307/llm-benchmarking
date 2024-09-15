@@ -6,8 +6,8 @@ import subprocess
 import os
 import csv
 
-from src.benchmark.vllm_benchmark.benchmark_serving import run_benchmark as vllm_run_benchmark
-from src.benchmark.llmperf.token_benchmark_ray import run_token_benchmark as llmperf_run_benchmark
+from llm_benchmark.benchmark.vllm_benchmark.benchmark_serving import run_benchmark as vllm_run_benchmark
+from llm_benchmark.benchmark.llmperf.token_benchmark_ray import run_token_benchmark as llmperf_run_benchmark
 
 
 MAX_RETRIES = 60
