@@ -23,7 +23,7 @@ class DeviceTimer:
         else:
             self.name = None
 
-        self.timer_stats_store = TimerStatsStore()
+        self.timer_stats_store = TimerStatsStore(profile_method="record_function")
         self.disabled = (name is None) or self.timer_stats_store.disabled
 
         if self.disabled:
