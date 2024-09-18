@@ -3,19 +3,47 @@ import requests
 import argparse
 import time
 import subprocess
-import os
+import os, shutil
 import csv
+from tqdm import tqdm
 
 from llm_benchmark.benchmark.vllm_benchmark.benchmark_serving import run_benchmark as vllm_run_benchmark
 from llm_benchmark.benchmark.llmperf.token_benchmark_ray import run_token_benchmark as llmperf_run_benchmark
+from llm_benchmark.profiler.utils.record_function_tracer import RecordFunctionTracer
 
 
 MAX_RETRIES = 60
 RETRY_INTERVAL = 30
 INITIAL_DELAY = 60
 
+PROFILER_PATH = '~/results'
+RESULT_DIR = os.path.abspath(os.path.expanduser(f"{PROFILER_PATH}"))
+
+def get_profiler_result():
+    
+    record_function_tracer = RecordFunctionTracer(RESULT_DIR, get_all=True)
+    profile_stats = record_function_tracer.get_operation_time_stats()
+
+    return profile_stats
+
+
 def create_summary(results, results_dir):
+    
+    os.makedirs(results_dir, exist_ok=True)
+
     summary_list = []
+    layers = [
+        'embed', 
+        'input_layernorm',
+        'attn', 
+        'attn_input_reshape',
+        'attn_kv_cache_save',
+        'attn_prefill',
+        'attn_decode',
+        'attn_output_reshape',
+        'mlp',
+        'post_layernorm', 
+    ]
 
     for result in results:
         summary = {}
@@ -33,6 +61,13 @@ def create_summary(results, results_dir):
         summary['P95 TTFT (ms)'] = round(result['p95_ttft_ms'], 2)
         summary['Mean Inter Token Latency (ms)'] = round(result['mean_itl_ms'], 2)
         summary['P95 Inter Token Latency (ms)'] = round(result['p95_itl_ms'], 2)
+
+        for layer in layers:
+            summary[f"{layer}_min"] = result[layer]['min'] if layer in result else ''
+            summary[f"{layer}_max"] = result[layer]['max'] if layer in result else ''
+            summary[f"{layer}_mean"] = result[layer]['mean'] if layer in result else ''
+            summary[f"{layer}_median"] = result[layer]['median'] if layer in result else ''
+            summary[f"{layer}_std"] = result[layer]['std'] if layer in result else ''
 
         summary_list.append(summary)
 
@@ -112,6 +147,13 @@ def run_benchmark(model, base_url, input_token, output_token, concurrency):
     # Set environment variables directly
     os.environ["OPENAI_API_KEY"] = "secret_abcdefg"
     os.environ["OPENAI_API_BASE"] = base_url
+
+    traces_dir = f"{RESULT_DIR}/profiler_traces/"
+    if os.path.exists(traces_dir):
+        shutil.rmtree(traces_dir)
+    os.makedirs(traces_dir, exist_ok=True)
+    
+
     print("Running benchmark for model: ", model, "with input token: ", input_token, "and output token: ", output_token, "and concurrency: ", concurrency)
 
     if script == "vllm":
@@ -120,8 +162,13 @@ def run_benchmark(model, base_url, input_token, output_token, concurrency):
     else:
         result_output = llmperf_run_benchmark(model, concurrency, concurrency, input_token, 0, output_token, 0)
         result_output = format_llmperf_result(result_output)
-    print(result_output)
-    return result_output
+    
+    profiler_stats = get_profiler_result()
+
+    return {
+        **result_output,
+        **profiler_stats
+    }
 
 def verify_server_status(base_url):
     '''function to validate if the server is up and running by checking the api status'''
@@ -166,7 +213,9 @@ def deploy_model(model_name, docker_image, port, extra_args):
             "-d", "-it", "--rm",
             "--privileged", "--network=host", 
             *([f"-e={env_value}" for env_value in args.env_values.split(',')] if args.env_values else []),
+            "-e", f"PROFILER_RESULT={RESULT_DIR}",
             "-v", f"{os.path.expanduser('~')}/.cache:/root/.cache",
+            "-v", f"{RESULT_DIR}:/root/results",
             docker_image, 
             "--model", model_name,
             "--port", port,
@@ -220,26 +269,26 @@ def main(args):
     else:
         container_id = None
 
-    results_dir = "results"
-    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(RESULT_DIR, exist_ok=True)
 
     results = []
     try:
         configs = create_config(args)
-        for config in configs:
+        for config in tqdm(configs, desc="Running benchmarks"):
             print(config)
             result = run_benchmark(args.model, base_url, config["input_tokens"], config["output_tokens"], config["concurrency"])
             result['input_tokens'] = config['input_tokens']
             result['output_tokens'] = config['output_tokens']
             result['concurrency'] = config['concurrency']
             results.append(result)
+            print(result)
     except Exception as e:
         print(f"Error during benchmark: {e}")
     finally:
         if container_id:
             remove_container(container_id)
     
-    create_summary(results, results_dir)
+    create_summary(results, RESULT_DIR)
 
 if __name__ == "__main__":
 

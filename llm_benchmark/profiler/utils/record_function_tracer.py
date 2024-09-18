@@ -1,3 +1,4 @@
+import glob
 import json
 import uuid
 
@@ -6,8 +7,9 @@ import torch
 
 
 class RecordFunctionTracer:
-    def __init__(self, output_path: str):
-        trace_id = str(uuid.uuid4())[:8]
+    def __init__(self, output_path: str, get_all: bool = False):
+        trace_id = str(uuid.uuid4())[:8] if not get_all else '*'
+        self.output_path = output_path
         self.trace_path = (
             f"{output_path}/profiler_traces/profiler_trace_{trace_id}.json"
         )
@@ -56,28 +58,48 @@ class RecordFunctionTracer:
 
             if e["args"]["correlation"] == event["args"]["correlation"]:
                 return e
+    
+    def fine_related_event(self, trace, event):
+        if not ("args" in event and "External id" in event["args"]):
+            return
+        
+        for e in trace:
+            if not ("args" in e and "External id" in e["args"]):
+                continue
+            
+            if e["args"]["External id"] == event["args"]["External id"]:
+                return e
+
 
     def get_operation_time_stats(self):
         stats = {}
-
-        trace = json.load(open(self.trace_path, "r"))["traceEvents"]
+        
+        traces = []
+        for trace_file in glob.glob(self.trace_path):
+            with open(trace_file, "r") as f:
+                traces.append(json.load(f)["traceEvents"])
+        trace = traces[0]
 
         for event in trace:
             if not ("cat" in event and event["cat"] == "user_annotation"):
                 continue
             children = self.find_children(trace, event)
-            cuda_time = 0
-            for child in children:
-                if not ("cat" in child and child["cat"] == "cuda_runtime"):
-                    continue
-                correlated_event = self.find_correlated_event(trace, child)
-                if not correlated_event:
-                    continue
-                cuda_time += correlated_event["dur"]
+            cuda_time = event['dur']
+            # for child in children:
+            #     if not ("cat" in child and child["cat"] == "cuda_runtime"):
+            #         continue
+            #     correlated_event = self.find_correlated_event(trace, child)
+            #     if not correlated_event:
+            #         continue
+            #     cuda_time += correlated_event["dur"]
+            for rank_trace in traces[1:]:
+                related_event = self.fine_related_event(rank_trace, event)
+                if related_event:
+                    cuda_time += related_event['dur']
             if cuda_time == 0:
                 continue
 
-            name = event["name"].replace("vidur_", "")
+            name = event["name"].replace("llm_", "")
 
             if name not in stats:
                 stats[name] = []
