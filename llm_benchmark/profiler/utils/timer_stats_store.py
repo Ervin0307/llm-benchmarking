@@ -1,7 +1,7 @@
 import numpy as np
 
-from ..utils import ProfileMethod
-from ..utils.singleton import Singleton
+from ..constants import ProfileMethod
+from .singleton import Singleton
 
 
 class TimerStatsStore(metaclass=Singleton):

@@ -1,3 +1,4 @@
 tqdm
 requests
+torch
 git+https://github.com/ray-project/llmperf.git
