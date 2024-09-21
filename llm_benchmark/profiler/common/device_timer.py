@@ -34,7 +34,7 @@ class DeviceTimer:
 
         if self.timer_stats_store.profile_method == ProfileMethod.KINETO:
             self.profiler = torch.profiler.profile(
-                activities=[torch.profiler.ProfilerActivity.CUDA],
+                activities=[torch.profiler.ProfilerActivity.CPU],
                 on_trace_ready=self.handle_trace,
             )
         else:
@@ -51,7 +51,7 @@ class DeviceTimer:
         if self.timer_stats_store.profile_method == ProfileMethod.RECORD_FUNCTION:
             self.profiler_function_context = record_function(self.name)
             self.profiler_function_context.__enter__()
-        elif self.timer_stats_store.profile_method == ProfileMethod.CUDA_EVENT:
+        elif self.timer_stats_store.profile_method == ProfileMethod.DEVICE_EVENT:
             self.start_event = torch.cuda.Event(enable_timing=True)
             self.start_event.record()
         elif self.timer_stats_store.profile_method == ProfileMethod.KINETO:
@@ -70,8 +70,8 @@ class DeviceTimer:
 
         if self.filter_str:
             events = [e for e in events if e.name.startswith(self.filter_str)]
-
-        total_cuda_time = self.aggregation_fn([e.cuda_time_total for e in events])
+        # print(f"events: {events}")
+        total_cuda_time = self.aggregation_fn([e.cpu_time for e in events])
         self.timer_stats_store.record_time(
             self.name, total_cuda_time * 1e-3
         )  # convert to ms
@@ -82,7 +82,7 @@ class DeviceTimer:
 
         if self.timer_stats_store.profile_method == ProfileMethod.RECORD_FUNCTION:
             self.profiler_function_context.__exit__(*args)
-        elif self.timer_stats_store.profile_method == ProfileMethod.CUDA_EVENT:
+        elif self.timer_stats_store.profile_method == ProfileMethod.DEVICE_EVENT:
             self.end_event = torch.cuda.Event(enable_timing=True)
             self.end_event.record()
             self.timer_stats_store.record_time(
