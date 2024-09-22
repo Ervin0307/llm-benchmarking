@@ -1,4 +1,7 @@
 tqdm
 requests
 torch
+psutil
+pynvml
+docker
 git+https://github.com/ray-project/llmperf.git
