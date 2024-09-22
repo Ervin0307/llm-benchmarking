@@ -1,7 +1,7 @@
 import psutil
 import subprocess
 
-from constants import FlopsPerCycle
+from .constants import FlopsPerCycle
 
 def calculate_flops_per_cycle(isa_info):
     flops_per_cycle = FlopsPerCycle.DEFAULT
