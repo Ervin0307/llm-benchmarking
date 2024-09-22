@@ -1,6 +1,7 @@
 import os
 import csv
 import shutil
+import datetime
 
 from llm_benchmark.benchmark.vllm_benchmark.benchmark_serving import (
     run_benchmark as vllm_run_benchmark,
@@ -68,7 +69,7 @@ def create_summary(results, results_dir):
     # filename = re.sub(r"-{2,}", "-", filename)
 
     csv_file_path = os.path.join(
-        results_dir, results[0]["model"].replace("/", "--"), "summary.csv"
+        results_dir, results[0]["model"].replace("/", "--"), f"summary_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
     )
     os.makedirs(os.path.dirname(csv_file_path), exist_ok=True)
 
@@ -191,5 +192,5 @@ def run_benchmark(
     profiler_stats = get_profiler_result(
         os.path.join(result_dir, model.replace("/", "--"))
     )
-
+    print(f"Profiler stats: {profiler_stats}")
     return {**result_output, **profiler_stats}

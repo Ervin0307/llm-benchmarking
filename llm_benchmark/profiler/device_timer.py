@@ -22,6 +22,7 @@ class DeviceTimer:
         "end_event",
         "start_time",
         "end_time",
+        "cpu_only",
     )
 
     def __init__(
@@ -30,6 +31,7 @@ class DeviceTimer:
         layer_id: int = 0,  # we don't care about layer id, it is just for compatibility with sarathi cudatimer
         aggregation_fn=sum,
         filter_str=None,
+        cpu_only: bool = False,
     ):
         if name:
             # beautify the names we get from vllm
@@ -48,9 +50,13 @@ class DeviceTimer:
         self.aggregation_fn = aggregation_fn
         self.filter_str = filter_str
 
+        activities = [torch.profiler.ProfilerActivity.CPU] 
+        if not cpu_only:
+            activities.append(torch.profiler.ProfilerActivity.CUDA)
+
         if self.timer_stats_store.profile_method == ProfileMethod.KINETO:
             self.profiler = torch.profiler.profile(
-                activities=[torch.profiler.ProfilerActivity.CUDA],
+                activities=activities,
                 on_trace_ready=self.handle_trace,
             )
         else:
@@ -75,6 +81,8 @@ class DeviceTimer:
             ProfileMethod.PERF_COUNTER: self._exit_perf_counter,
         }
 
+        self.cpu_only = cpu_only
+
     def _start_record_function(self):
         self.profiler_function_context = record_function(self.name)
         self.profiler_function_context.__enter__()
@@ -87,7 +95,8 @@ class DeviceTimer:
         self.profiler.__enter__()
 
     def _start_perf_counter(self):
-        torch.cuda.synchronize()
+        if not self.cpu_only:
+            torch.cuda.synchronize()
         self.start_time = time.perf_counter()
 
     # Profiling exit methods
@@ -105,7 +114,8 @@ class DeviceTimer:
         self.profiler.__exit__(*args)
 
     def _exit_perf_counter(self, *args):
-        torch.cuda.synchronize()
+        if not self.cpu_only:
+            torch.cuda.synchronize()
         self.end_time = time.perf_counter()
         self.timer_stats_store.record_time(
             self.name,
@@ -131,7 +141,7 @@ class DeviceTimer:
         if self.filter_str:
             events = [e for e in events if e.name.startswith(self.filter_str)]
 
-        total_cuda_time = self.aggregation_fn([e.cuda_time_total for e in events])
+        total_cuda_time = self.aggregation_fn([e.cuda_time_total if not self.cpu_only else e.cpu_time_total for e in events])
         self.timer_stats_store.record_time(
             self.name, total_cuda_time * 1e-3
         )  # convert to ms

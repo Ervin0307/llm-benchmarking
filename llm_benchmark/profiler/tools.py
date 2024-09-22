@@ -1,13 +1,20 @@
 import os
 import torch.nn as nn
 
-from typing import Optional
+from typing import Optional, List
 from functools import wraps
+
+import ray
+import pandas as pd
+import datetime
+from tqdm import tqdm
 
 from .constants import VllmProfileLayer
 from .record_function_tracer import RecordFunctionTracer
 from .device_timer import DeviceTimer
 from .utils.timer_stats_store import TimerStatsStore
+from .utils import get_collectives_inputs
+from .collectives.benchmark_runner import create_runner_pool
 
 
 original_forwards = {}
@@ -80,7 +87,7 @@ def profile_layer(
         timer_store_map = {}
 
     for name, submodule in module.named_children():
-        key = f"{parent_name or ""}.{name}".lstrip(".") + f":{type(submodule).__name__}"
+        key = f"{parent_name or ''}.{name}".lstrip(".") + f":{type(submodule).__name__}"
         # If the submodule has no children, it is a "leaf" and should be wrapped
 
         profile_name = VllmProfileLayer.get_profile_name_by_operation(key)
@@ -107,3 +114,57 @@ def stop_profile():
 
     # # Clear the dictionary after restoring the model
     original_forwards.clear()
+
+
+def profile_collectives(
+        num_workers_per_node_combinations: List[int],
+        max_collective_size: int,
+        collective: str,
+        device: str = "cpu", # "cpu" or "cuda"
+        output_dir: str = "results",
+    ):
+
+    ray.init(ignore_reinit_error=True)
+
+    total_workers_available, num_nodes, runner_pool = create_runner_pool(device)
+
+    all_results = []
+
+    collectives_inputs = get_collectives_inputs(
+        num_nodes,
+        num_workers_per_node_combinations,
+        max_collective_size,
+        collective,
+        total_workers_available,
+    )   
+
+    for collectives_input in tqdm(collectives_inputs):
+        promises = []
+        for worker_id in range(total_workers_available):
+            promise = runner_pool[worker_id].run_collective.remote(collectives_input)
+            promises.append(promise)
+
+        for worker_id in range(int(total_workers_available)):
+            result = ray.get([promises[worker_id]])[0]
+            if result and worker_id == 0:
+                all_results.append(result)  
+
+        ray.get(promises)
+
+    # filter none results
+    all_results = [x for x in all_results if x is not None]
+
+    df = pd.DataFrame(all_results)
+    # the time_stats column is a dict, so we need to expand it into columns recursively and add prefix  
+    df = (
+        pd.json_normalize(df["time_stats"])
+        .add_prefix("time_stats.")
+        .join(df.drop(columns=["time_stats"]))
+    )
+
+    output_dir = f"{output_dir}/collective/"
+    os.makedirs(output_dir, exist_ok=True)
+    # write results to a csv file
+    df.to_csv(f"{output_dir}/{collective}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv")
+
+    return df

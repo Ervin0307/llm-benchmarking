@@ -1,9 +1,9 @@
 import numpy as np
 import torch
 
-from llm_benchmark.profiler.collectives.collectives_impl import GraphedCollective
-from llm_benchmark.profiler.common.device_timer import DeviceTimer
-from llm_benchmark.profiler.common.timer_stats_store import TimerStatsStore
+from .collectives_impl import GraphedCollective
+from ..device_timer import DeviceTimer
+from ..utils.timer_stats_store import TimerStatsStore
 
 WARMUP_STEPS = 1
 ACTIVE_STEPS = 3
@@ -21,6 +21,7 @@ class CollectiveWrapper:
         collective: str,
         devices_per_node: int,
         max_devices_per_node: int,
+        device: str
     ) -> None:
         self._rank = rank
         self._num_workers = num_workers
@@ -31,12 +32,12 @@ class CollectiveWrapper:
         self._max_devices_per_node = max_devices_per_node
 
         self._graphed_collective = GraphedCollective(
-            num_workers, size, collective=collective, disable_graph=DISABLE_GRAPH
+            num_workers, size, collective=collective, disable_graph=DISABLE_GRAPH, device=device
         )
 
         self.timer_stats_store = TimerStatsStore(profile_method="kineto")
         self._cuda_timer = DeviceTimer(
-            collective, aggregation_fn=np.median, filter_str="gloo"
+            collective, aggregation_fn=np.median, filter_str="gloo" if device == "cpu" else "nccl", cpu_only=device == "cpu"
         )
 
     def _run_collective(self):

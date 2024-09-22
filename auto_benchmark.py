@@ -5,6 +5,8 @@ from tqdm import tqdm
 
 from llm_benchmark.controller import single_node as single_node_controller
 from llm_benchmark.benchmark import tools as benchmark_tools
+from llm_benchmark.profiler import tools as profiler_tools
+from llm_benchmark.hardware import tools as hardware_tools
 
 
 def create_config(args):
@@ -68,8 +70,23 @@ def main(args):
     finally:
         if container_id:
             single_node_controller.remove_container(container_id)
-
+    
     benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
+
+    if args.profile_collectives:
+        profiler_tools.profile_collectives(
+            num_workers_per_node_combinations=[1, 2],
+            max_collective_size=512 * 1024,
+            collective="all_reduce", # "all_reduce" or "send_recv"
+            device="cpu" if args.cpu_only else "cuda", # "cpu" or "cuda" 
+            output_dir=os.environ["PROFILER_RESULT_DIR"]
+        )
+    
+    if args.profile_hardware:
+        hardware_tools.get_hardware_info(
+            cpu_only=args.cpu_only,
+            output_dir=os.environ["PROFILER_RESULT_DIR"]
+        )
 
 
 if __name__ == "__main__":
@@ -132,6 +149,21 @@ if __name__ == "__main__":
         help="The benchmark script to be used for the testing.",
     )
 
+    args.add_argument(
+        "--profile-collectives",
+        action="store_true",
+        help="Whether to profile the collectives.",
+    )
+    args.add_argument(
+        "--cpu-only",
+        action="store_true",
+        help="Whether to profile only on cpu.",
+    )
+    args.add_argument(
+        "--profile-hardware",
+        action="store_true",
+        help="Whether to profile the hardware.",
+    )
     args = args.parse_args()
 
     main(args)
