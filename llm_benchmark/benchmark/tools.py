@@ -26,6 +26,7 @@ def create_summary(results, results_dir):
 
     for result in results:
         summary = {}
+        summary["Run ID"] = result["run_id"]
         summary["Model"] = result["model"]
         summary["Mean Input Tokens"] = result["input_tokens"]
         summary["Mean Output Tokens"] = result["output_tokens"]
@@ -158,6 +159,7 @@ def run_benchmark(
     concurrency: int,
     benchmark_script: str,
     result_dir: str,
+    run_id: str,
 ):
     # Set environment variables directly
     os.environ["OPENAI_API_KEY"] = "secret_abcdefg"
@@ -179,6 +181,8 @@ def run_benchmark(
         output_token,
         "and concurrency: ",
         concurrency,
+        "run id: ",
+        run_id,
     )
 
     if benchmark_script == "vllm":
@@ -193,5 +197,11 @@ def run_benchmark(
         result_output = format_llmperf_result(result_output)
 
     profiler_stats = get_profiler_result(result_dir)
-    print(f"Profiler stats: {profiler_stats}")
+
+    run_id_dir = os.path.join(result_dir, 'traces', run_id)
+    os.makedirs(run_id_dir, exist_ok=True)
+    for file in os.listdir(traces_dir):
+        if file.startswith("profiler_trace_") and file.endswith(".json"):
+            shutil.move(os.path.join(traces_dir, file), run_id_dir)
+
     return {**result_output, **profiler_stats}

@@ -2,6 +2,7 @@ import os
 import argparse
 
 from tqdm import tqdm
+import uuid
 
 from llm_benchmark.controller import single_node as single_node_controller
 from llm_benchmark.benchmark import tools as benchmark_tools
@@ -51,6 +52,7 @@ def main(args):
         configs = create_config(args)
         for config in tqdm(configs, desc="Running benchmarks"):
             print(config)
+            run_id = str(uuid.uuid4())[:8]
             result = benchmark_tools.run_benchmark(
                 args.model,
                 base_url,
@@ -59,10 +61,14 @@ def main(args):
                 config["concurrency"],
                 args.benchmark_script,
                 os.environ["PROFILER_RESULT_DIR"],
+                run_id,
             )
+            
+            result["run_id"] = run_id
             result["input_tokens"] = config["input_tokens"]
             result["output_tokens"] = config["output_tokens"]
             result["concurrency"] = config["concurrency"]
+            
             results.append(result)
             print(result)
     except Exception as e:

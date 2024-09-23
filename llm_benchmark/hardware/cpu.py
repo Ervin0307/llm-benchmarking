@@ -121,6 +121,3 @@ def get_cpu_info():
     )
 
     return {**info, **lscpu_info}
-
-
-print(get_cpu_info())

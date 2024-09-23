@@ -327,28 +327,27 @@ class RecordFunctionTracer:
         if not len(traces):
             return {}
 
-        trace = traces[0]
-        for event in trace:
-            if not ("cat" in event and event["cat"] == "user_annotation"):
-                continue
-            # children = self.find_children(trace, event)
+        user_events = {}
+        for trace in traces:
+            for event in trace:
+                
+                if not ("cat" in event and event["cat"] == "user_annotation"):
+                    continue
+                
+                if not ("args" in event and "External id" in event["args"]):
+                    continue
+                
+                ext_id = event["args"]["External id"]
+                if ext_id not in user_events:
+                    user_events[ext_id] = event
+                else:
+                    if event["dur"] > user_events[ext_id]["dur"]:
+                        user_events[ext_id] = event
+
+        for event in user_events.values():
             cuda_time = event["dur"]
-            # for child in children:
-            #     if not ("cat" in child and child["cat"] == "cuda_runtime"):
-            #         continue
-            #     correlated_event = self.find_correlated_event(trace, child)
-            #     if not correlated_event:
-            #         continue
-            #     cuda_time += correlated_event["dur"]
-            for rank_trace in traces[1:]:
-                related_event = self.find_related_event(rank_trace, event)
-                if related_event:
-                    cuda_time += related_event["dur"]
-            if cuda_time == 0:
-                continue
-
             name = event["name"].replace("profiler.", "")
-
+            
             if name not in stats:
                 stats[name] = []
 
