@@ -5,10 +5,11 @@ from torch import mps, cuda
 
 num_trails = 10
 
+
 def flops_benchmark(device):
     test_range = 2 ** np.arange(8, 16, 1)
-    
-    print('size, elapsed_time, flops')
+
+    print("size, elapsed_time, flops")
     for n in test_range:
         total = 0
         for _ in range(num_trails):
@@ -29,7 +30,8 @@ def flops_benchmark(device):
         print(n, total, tflops, sep=", ")
 
     return tflops
-    
+
+
 def synchronize(device):
     if device.type == "cuda":
         cuda.synchronize()
@@ -42,7 +44,7 @@ def synchronize(device):
 def memory_bandwidth_benchmark(device, size=1024 * 1024 * 256):  # 256MB
     test_range = 2 ** (np.arange(20, 28, 0.5))
 
-    print('size (GB), elapsed_time, bandwidth')
+    print("size (GB), elapsed_time, bandwidth")
     for size in test_range:
         elapsed_time = 0
         for _ in range(num_trails):
@@ -77,12 +79,12 @@ def memory_bandwidth_benchmark(device, size=1024 * 1024 * 256):  # 256MB
         bytes_copied = a.nelement() * a.element_size()  # bytes
         bandwidth = 2 * bytes_copied / elapsed_time / 1e9  # GB/s
 
-        print(bytes_copied / 1e9, elapsed_time, bandwidth, sep=', ')
+        print(bytes_copied / 1e9, elapsed_time, bandwidth, sep=", ")
 
     return bandwidth
 
 
 if __name__ == "__main__":
-    device = torch.device('cpu')
+    device = torch.device("cpu")
     flops_benchmark(device)
     memory_bandwidth_benchmark(device)
