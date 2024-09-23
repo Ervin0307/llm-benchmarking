@@ -16,6 +16,7 @@ from llm_benchmark.profiler.record_function_tracer import RecordFunctionTracer
 def get_profiler_result(result_dir: str):
     record_function_tracer = RecordFunctionTracer(result_dir, get_all=True)
     profile_stats = record_function_tracer.get_operation_time_stats()
+    
     return profile_stats
 
 
@@ -162,6 +163,8 @@ def run_benchmark(
     os.environ["OPENAI_API_KEY"] = "secret_abcdefg"
     os.environ["OPENAI_API_BASE"] = base_url
 
+    result_dir = os.path.join(result_dir, model.replace("/", "--"))
+
     traces_dir = f"{result_dir}/profiler_traces/"
     if os.path.exists(traces_dir):
         shutil.rmtree(traces_dir)
@@ -189,8 +192,6 @@ def run_benchmark(
         )
         result_output = format_llmperf_result(result_output)
 
-    profiler_stats = get_profiler_result(
-        os.path.join(result_dir, model.replace("/", "--"))
-    )
+    profiler_stats = get_profiler_result(result_dir)
     print(f"Profiler stats: {profiler_stats}")
     return {**result_output, **profiler_stats}
