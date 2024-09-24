@@ -1,5 +1,8 @@
 import os
 import argparse
+import yaml
+import json
+import itertools
 
 from tqdm import tqdm
 import uuid
@@ -31,60 +34,132 @@ def create_config(args):
                 configs.append(config)
     return configs
 
+# Function to process and create combinations
+def generate_combinations(config_section):
+    fixed_params = {}
+    array_params = {}
 
-def main(args):
+    for key, value in config_section.items():
+        if isinstance(value, list):
+            array_params[key] = value
+        else:
+            fixed_params[key] = value
+
+    # Generate all possible combinations for array parameters
+    if array_params:
+        keys, values = zip(*array_params.items())
+        combinations = list(itertools.product(*values))
+    else:
+        combinations = [()]  # No combinations to generate
+
+    return fixed_params, array_params, combinations, keys if array_params else []
+
+def create_engine_config(engine_config_file):
+    with open(engine_config_file, "r") as f:
+        engine_config = yaml.safe_load(f)
+    
+    # Separate the fixed parameters and the parameters with arrays
+    # Process the 'args' section
+    fixed_args, array_args, arg_combinations, arg_keys = generate_combinations(engine_config['args'])
+
+    # Process the 'envs' section
+    fixed_envs, array_envs, env_combinations, env_keys = generate_combinations(engine_config['envs'])
+
+    # Create a list of configuration dictionaries with all combinations
+    configs = []
+    for arg_comb in arg_combinations:
+        for env_comb in env_combinations:
+            # Create new config dict for each combination
+            new_config = {
+                'args': fixed_args.copy(),  # Copy fixed args
+                'envs': fixed_envs.copy()   # Copy fixed envs
+            }
+            # Update with current combination of 'args'
+            if arg_comb:
+                new_config['args'].update(dict(zip(arg_keys, arg_comb)))
+
+            # Update with current combination of 'envs'
+            if env_comb:
+                new_config['envs'].update(dict(zip(env_keys, env_comb)))
+
+            # Append the complete config to the list
+            configs.append(new_config)
+
+    return configs
+
+def run_benchmark(args, engine_config=None):
+
     base_url = f"http://localhost:{args.port}/v1"
+    
+    if args.engine_config_id:
+        engine_config_id = args.engine_config_id
+    else:
+        engine_config_id = str(uuid.uuid4())[:8]
+
     if args.docker_image:
         container_id = single_node_controller.deploy_model(
-            args.model,
             args.docker_image,
-            args.port,
-            args.env_values,
+            engine_config['envs'] if engine_config else [],
             os.environ["PROFILER_RESULT_DIR"],
-            args.extra_args.split(),
+            engine_config['args'] if engine_config else [],
+            engine_config_id,
+            args.port
         )
     else:
         container_id = None
     
+    if args.engine_config_id or container_id:
+        engine_tools.create_engine_summary(args.engine, engine_config_id, args.model)
+    
+    results = []
+    try:
+        configs = create_config(args)
+        for config in tqdm(configs, desc="Running benchmarks"):
+            print(config)
+            run_id = str(uuid.uuid4())[:8]
+            result = benchmark_tools.run_benchmark(
+                args.model,
+                base_url,
+                config["input_tokens"],
+                config["output_tokens"],
+                config["concurrency"],
+                args.benchmark_script,
+                os.environ["PROFILER_RESULT_DIR"],
+                run_id,
+            )
+            
+            result["engine"] = args.engine
+            result["engine_config_id"] = args.engine_config_id
+            result["run_id"] = run_id
+            result["input_tokens"] = config["input_tokens"]
+            result["output_tokens"] = config["output_tokens"]
+            result["concurrency"] = config["concurrency"]
+            
+            results.append(result)
+            print(result)
+    except Exception as e:
+        print(f"Error during benchmark: {e}")
+    finally:
+        if container_id:
+            single_node_controller.remove_container(container_id)
+
+    benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
+
+    
+def main(args):
+
     os.makedirs(os.environ["PROFILER_RESULT_DIR"], exist_ok=True)
 
-    if args.engine_config_id:
-        engine_tools.create_engine_summary(args.engine, args.engine_config_id, args.model)
-
-    if args.run_benchmark:
-        results = []
-        try:
-            configs = create_config(args)
-            for config in tqdm(configs, desc="Running benchmarks"):
-                print(config)
-                run_id = str(uuid.uuid4())[:8]
-                result = benchmark_tools.run_benchmark(
-                    args.model,
-                    base_url,
-                    config["input_tokens"],
-                    config["output_tokens"],
-                    config["concurrency"],
-                    args.benchmark_script,
-                    os.environ["PROFILER_RESULT_DIR"],
-                    run_id,
-                )
-                
-                result["engine"] = args.engine
-                result["engine_config_id"] = args.engine_config_id
-                result["run_id"] = run_id
-                result["input_tokens"] = config["input_tokens"]
-                result["output_tokens"] = config["output_tokens"]
-                result["concurrency"] = config["concurrency"]
-                
-                results.append(result)
-                print(result)
-        except Exception as e:
-            print(f"Error during benchmark: {e}")
-        finally:
-            if container_id:
-                single_node_controller.remove_container(container_id)
+    if args.engine_config_file:
+        engine_configs = create_engine_config(args.engine_config_file)
+        print("Number of engine configs: ", len(engine_configs))
+    else:
+        engine_configs = [None]  # Assuming a default or empty config if file is not provided
     
-        benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
+    if args.run_benchmark:
+        for engine_config in engine_configs:
+            run_benchmark(args, engine_config)
+            break
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(
@@ -127,6 +202,12 @@ if __name__ == "__main__":
         help="The engine to be used for the testing.",
     )   
     args.add_argument(
+        "--engine-config-file",
+        type=str,
+        default=None,
+        help="The engine config file to be used for the testing.",
+    )
+    args.add_argument(
         "--engine-config-id",
         type=str,
         default=None,
@@ -160,18 +241,6 @@ if __name__ == "__main__":
         type=str,
         default="1,10,20,30,50,100",
         help="List of concurrency for the benchmark",
-    )
-    args.add_argument(
-        "--extra-args",
-        type=str,
-        default="",
-        help="Extra arguments to be passed to the engine",
-    )
-    args.add_argument(
-        "--env-values",
-        type=str,
-        default="",
-        help="Environment values to be set for the benchmark",
     )
     args.add_argument(
         "--benchmark-script",

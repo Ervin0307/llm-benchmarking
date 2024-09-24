@@ -5,20 +5,25 @@ import subprocess
 
 
 def build_docker_run_command(
-    model_name: str,
     docker_image: str,
-    port: int,
-    env_values: str,
+    env_values: list,
     result_dir: str,
     extra_args: list,
+    engine_config_id: str
 ) -> list:
     """Constructs the docker run command."""
-    env_vars = [f"-e={env}" for env in env_values.split(",")] if env_values else []
-    volumes = [
-        f"-v {os.path.expanduser('~')}/.cache:/root/.cache",
-        f"-v {result_dir}:/root/results",
-    ]
+    
+    env_vars = [f"-e={k}={v}" for k, v in env_values.items()] if env_values else []
+    env_vars.append(f"-e=ENGINE_CONFIG_ID={engine_config_id}")
+    env_vars.append(f"-e=PROFILER_RESULT_DIR={result_dir}")
 
+    arg_vars = [f"--{k}={v}" for k, v in extra_args.items()] if extra_args else []
+    
+    volumes = [
+        f"-v={os.path.expanduser('~')}/.cache:/root/.cache",
+        f"-v={result_dir}:/root/results",
+    ]
+    
     docker_command = [
         "docker",
         "run",
@@ -28,53 +33,48 @@ def build_docker_run_command(
         "--privileged",
         "--network=host",
         *env_vars,
-        f"-e PROFILER_RESULT_DIR={result_dir}",
         *volumes,
         docker_image,
-        "--model",
-        model_name,
-        "--port",
-        str(port),
-        *extra_args,
+        *arg_vars
     ]
 
     return docker_command
 
 
 def deploy_model(
-    model_name: str,
     docker_image: str,
-    port: int,
     env_values: str,
     result_dir: str,
     extra_args: list,
+    engine_config_id: str,
+    port: int,
     warmup_sec: int = 60,
 ) -> str:
     try:
         docker_command = build_docker_run_command(
-            model_name, docker_image, port, env_values, result_dir, extra_args
+            docker_image, env_values, result_dir, extra_args, engine_config_id
         )
-        print(f"Deploying {model_name} with Docker image {docker_image}...")
+        print(f"Deploying with Docker image {docker_image}...")
         print("Executing Docker command: " + " ".join(docker_command))
 
         container = subprocess.run(
             docker_command, capture_output=True, text=True, check=True
         )
         container_id = container.stdout.strip()
-
+        print(f"Container ID: {container_id}")
         # Wait for the container to initialize
         time.sleep(warmup_sec)
 
         if not verify_server_status(f"http://localhost:{port}/v1"):
             raise RuntimeError("Server failed to start after maximum retries.")
 
-        print(f"Container {container_id} for {model_name} is now running.")
+        print(f"Container {container_id} is now running.")
         return container_id
     except subprocess.CalledProcessError as e:
-        print(f"Failed to deploy model {model_name}. Docker error: {e.stderr}")
+        print(f"Failed to deploy model. Docker error: {e.stderr}")
         raise
     except Exception as e:
-        print(f"Error deploying model {model_name}: {e}")
+        print(f"Error deploying model: {e}")
         raise
 
 
