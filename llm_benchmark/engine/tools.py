@@ -21,7 +21,7 @@ def save_engine_config(args):
 
 def save_engine_envs(envs):
     envs_dict = {}
-    for k, v in envs.environment_variables.items():
+    for k, v in envs.items():
         envs_dict[k] = v()
     engine_dir = get_engine_dir()
     os.makedirs(engine_dir, exist_ok=True)
