@@ -1,4 +1,5 @@
 import os
+import asyncio
 import argparse
 
 from tqdm import tqdm
@@ -8,6 +9,7 @@ from llm_benchmark.controller import single_node as single_node_controller
 from llm_benchmark.benchmark import tools as benchmark_tools
 from llm_benchmark.profiler import tools as profiler_tools
 from llm_benchmark.hardware import tools as hardware_tools
+from llm_benchmark.hardware import monitor as hw_monitor
 
 
 def create_config(args):
@@ -31,7 +33,7 @@ def create_config(args):
     return configs
 
 
-def main(args):
+async def main(args):
     base_url = f"http://localhost:{args.port}/v1"
     if args.docker_image:
         container_id = single_node_controller.deploy_model(
@@ -47,12 +49,20 @@ def main(args):
 
     os.makedirs(os.environ["PROFILER_RESULT_DIR"], exist_ok=True)
 
+    log_metrics_task = None
     results = []
     try:
         configs = create_config(args)
         for config in tqdm(configs, desc="Running benchmarks"):
             print(config)
             run_id = str(uuid.uuid4())[:8]
+            log_metrics_task = asyncio.create_task(
+                hw_monitor.log_system_metrics(
+                    os.path.join(os.environ["PROFILER_RESULT_DIR"], run_id),
+                    pid=None,
+                    interval=3,
+                )
+            )
             result = benchmark_tools.run_benchmark(
                 args.model,
                 base_url,
@@ -63,36 +73,33 @@ def main(args):
                 os.environ["PROFILER_RESULT_DIR"],
                 run_id,
             )
-            
+
             result["run_id"] = run_id
             result["input_tokens"] = config["input_tokens"]
             result["output_tokens"] = config["output_tokens"]
             result["concurrency"] = config["concurrency"]
-            
+
             results.append(result)
+            log_metrics_task.cancel()
             print(result)
     except Exception as e:
         print(f"Error during benchmark: {e}")
     finally:
         if container_id:
             single_node_controller.remove_container(container_id)
-    
+        if log_metrics_task is not None:
+            log_metrics_task.cancel()
+
     benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(
-            num_workers_per_node_combinations=[1, 2],
             max_collective_size=512 * 1024,
-            collective="all_reduce", # "all_reduce" or "send_recv"
-            device="cpu" if args.cpu_only else "cuda", # "cpu" or "cuda" 
-            output_dir=os.environ["PROFILER_RESULT_DIR"]
+            output_dir=os.environ["PROFILER_RESULT_DIR"],
         )
-    
+
     if args.profile_hardware:
-        hardware_tools.get_hardware_info(
-            cpu_only=args.cpu_only,
-            output_dir=os.environ["PROFILER_RESULT_DIR"]
-        )
+        hardware_tools.get_hardware_info(output_dir=os.environ["PROFILER_RESULT_DIR"])
 
 
 if __name__ == "__main__":
@@ -172,4 +179,4 @@ if __name__ == "__main__":
     )
     args = args.parse_args()
 
-    main(args)
+    asyncio.run(main(args))

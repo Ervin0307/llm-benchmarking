@@ -1,25 +1,25 @@
 import gc
 import os
-import datetime
 from typing import Optional
-import pandas as pd
 import ray
 import torch
-from tqdm import tqdm
 
-from llm_benchmark.profiler.collectives.collectives_input import CollectivesInput
-from llm_benchmark.profiler.collectives.collectives_wrapper import CollectiveWrapper
+from .collectives_input import CollectivesInput
+from .collectives_wrapper import CollectiveWrapper
+from llm_benchmark.utils.device_utils import get_numa_nodes
 
 
 @ray.remote(num_cpus=1)
 class BenchmarkRunner:
-    def __init__(self, worker_id: int, workers_per_node: int, head_ip: str, device: str) -> None:
+    def __init__(
+        self, worker_id: int, workers_per_node: int, head_ip: str, device: str
+    ) -> None:
         self._worker_id = worker_id
         self._max_workers_per_node = workers_per_node
-        
+
         if device == "cuda":
             self._set_cuda_visible_devices()
-        
+
         self._last_num_workers_per_node = None
         self._last_num_workers = None
         self._head_ip = head_ip
@@ -27,7 +27,7 @@ class BenchmarkRunner:
 
     def _set_cuda_visible_devices(self) -> None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(
-            self._gpu_id % self._max_devices_per_node
+            self._worker_id % self._max_workers_per_node
         )
         # set additional nccl env vars
         # This env var set by Ray causes exceptions with graph building.
@@ -46,7 +46,7 @@ class BenchmarkRunner:
             or collectives_input.num_workers_per_node != self._last_num_workers_per_node
         ) and torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
-        
+
         rank = self._get_rank(
             collectives_input.num_workers, collectives_input.num_workers_per_node
         )
@@ -74,7 +74,7 @@ class BenchmarkRunner:
             collectives_input.collective,
             collectives_input.num_workers_per_node,
             self._max_workers_per_node,
-            self._device
+            self._device,
         )
         stats = wrapper.profile()
         del wrapper
@@ -94,7 +94,7 @@ class BenchmarkRunner:
             backend = "nccl"
         else:
             backend = "gloo"
-        
+
         torch.distributed.init_process_group(
             backend=backend,
             rank=rank,
@@ -103,7 +103,6 @@ class BenchmarkRunner:
         )
 
     def _get_rank(self, num_workers: int, devices_per_node: int):
-        
         assert self._max_workers_per_node >= devices_per_node
         assert self._max_workers_per_node % devices_per_node == 0
         assert num_workers % devices_per_node == 0 or num_workers < devices_per_node
@@ -134,21 +133,13 @@ class BenchmarkRunner:
 
         return rank
 
-def get_numa_nodes():
-    # On Linux systems, NUMA node information can be found under /sys/devices/system/node
-    numa_nodes = []
-    if os.path.exists('/sys/devices/system/node'):
-        for node in os.listdir('/sys/devices/system/node'):
-            if node.startswith('node'):
-                numa_nodes.append(node)
-    return numa_nodes
 
 def create_runner_pool(device: str = "cpu"):
     if device == "cpu":
         total_workers_available = len(get_numa_nodes())
-    elif device == "cuda":
-        total_workers_available = int(ray.cluster_resources()[device.upper()])
-        
+    elif device in ["cuda", "gpu"]:
+        total_workers_available = int(ray.cluster_resources()["GPU"])
+
     print(f"Total {device} available: {total_workers_available}")
 
     assert total_workers_available > 0, "No workers available"
@@ -170,7 +161,7 @@ def create_runner_pool(device: str = "cpu"):
                 num_gpus=1 if device == "cuda" else 0,
                 resources={
                     f"node:{node_ip}": 0.01,
-                }
+                },
             ).remote(worker_id, workers_per_node, all_node_ips[0], device)
         )
     return total_workers_available, num_nodes, runner_pool
