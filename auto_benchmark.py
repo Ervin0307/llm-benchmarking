@@ -152,14 +152,12 @@ def main(args):
 
     if args.engine_config_file:
         engine_configs = create_engine_config(args.engine_config_file)
-        print("Number of engine configs: ", len(engine_configs))
     else:
         engine_configs = [None]  # Assuming a default or empty config if file is not provided
     
     if args.run_benchmark:
-        for engine_config in engine_configs:
+        for engine_config in tqdm(engine_configs, desc="Running engine configs"):
             run_benchmark(args, engine_config)
-            break
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(

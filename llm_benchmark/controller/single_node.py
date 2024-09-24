@@ -13,9 +13,9 @@ def build_docker_run_command(
 ) -> list:
     """Constructs the docker run command."""
     
-    env_vars = [f"-e={k}={v}" for k, v in env_values.items()] if env_values else []
+    env_vars = [f"-e='{k}={v}'" for k, v in env_values.items()] if env_values else []
     env_vars.append(f"-e=ENGINE_CONFIG_ID={engine_config_id}")
-    env_vars.append(f"-e=PROFILER_RESULT_DIR={result_dir}")
+    env_vars.append(f"-e=PROFILER_RESULT_DIR=/root/results/")
 
     arg_vars = [f"--{k}={v}" for k, v in extra_args.items()] if extra_args else []
     

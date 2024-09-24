@@ -73,7 +73,7 @@ def create_summary(results, results_dir):
     # filename = re.sub(r"-{2,}", "-", filename)
 
     csv_file_path = os.path.join(
-        results_dir, results[0]["model"].replace("/", "--"), f"summary_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+        results_dir, results[0]["model"].replace("/", "--"), f"summary.csv"
     )
     os.makedirs(os.path.dirname(csv_file_path), exist_ok=True)
 
