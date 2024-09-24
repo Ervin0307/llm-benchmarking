@@ -8,6 +8,7 @@ from llm_benchmark.controller import single_node as single_node_controller
 from llm_benchmark.benchmark import tools as benchmark_tools
 from llm_benchmark.profiler import tools as profiler_tools
 from llm_benchmark.hardware import tools as hardware_tools
+from llm_benchmark.engine import tools as engine_tools
 
 
 def create_config(args):
@@ -44,40 +45,46 @@ def main(args):
         )
     else:
         container_id = None
-
+    
     os.makedirs(os.environ["PROFILER_RESULT_DIR"], exist_ok=True)
 
-    results = []
-    try:
-        configs = create_config(args)
-        for config in tqdm(configs, desc="Running benchmarks"):
-            print(config)
-            run_id = str(uuid.uuid4())[:8]
-            result = benchmark_tools.run_benchmark(
-                args.model,
-                base_url,
-                config["input_tokens"],
-                config["output_tokens"],
-                config["concurrency"],
-                args.benchmark_script,
-                os.environ["PROFILER_RESULT_DIR"],
-                run_id,
-            )
-            
-            result["run_id"] = run_id
-            result["input_tokens"] = config["input_tokens"]
-            result["output_tokens"] = config["output_tokens"]
-            result["concurrency"] = config["concurrency"]
-            
-            results.append(result)
-            print(result)
-    except Exception as e:
-        print(f"Error during benchmark: {e}")
-    finally:
-        if container_id:
-            single_node_controller.remove_container(container_id)
+    if args.engine_config_id:
+        engine_tools.create_engine_summary(args.engine, args.engine_config_id, args.model)
+
+    if args.run_benchmark:
+        results = []
+        try:
+            configs = create_config(args)
+            for config in tqdm(configs, desc="Running benchmarks"):
+                print(config)
+                run_id = str(uuid.uuid4())[:8]
+                result = benchmark_tools.run_benchmark(
+                    args.model,
+                    base_url,
+                    config["input_tokens"],
+                    config["output_tokens"],
+                    config["concurrency"],
+                    args.benchmark_script,
+                    os.environ["PROFILER_RESULT_DIR"],
+                    run_id,
+                )
+                
+                result["engine"] = args.engine
+                result["engine_config_id"] = args.engine_config_id
+                result["run_id"] = run_id
+                result["input_tokens"] = config["input_tokens"]
+                result["output_tokens"] = config["output_tokens"]
+                result["concurrency"] = config["concurrency"]
+                
+                results.append(result)
+                print(result)
+        except Exception as e:
+            print(f"Error during benchmark: {e}")
+        finally:
+            if container_id:
+                single_node_controller.remove_container(container_id)
     
-    benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
+        benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(
@@ -113,10 +120,28 @@ if __name__ == "__main__":
         help="The engine image to be used for the testing.",
     )
     args.add_argument(
+        "--engine",
+        type=str,
+        default="vllm",
+        choices=["vllm", "sglang"],
+        help="The engine to be used for the testing.",
+    )   
+    args.add_argument(
+        "--engine-config-id",
+        type=str,
+        default=None,
+        help="The engine config id to be used for the testing.",
+    )
+    args.add_argument(
         "--port",
         type=str,
         default="8000",
         help="The port where the engine will be running",
+    )
+    args.add_argument(
+        "--run-benchmark",
+        action="store_true",
+        help="Whether to run the benchmark.",
     )
     args.add_argument(
         "--input-tokens",
