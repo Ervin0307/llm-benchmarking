@@ -48,9 +48,16 @@ class RecordFunctionTracer:
         activities = [torch.profiler.ProfilerActivity.CPU]
         if not self.cpu_only:
             activities.append(torch.profiler.ProfilerActivity.CUDA)
-
+        
+        schedule = torch.profiler.schedule(
+            wait=1,  # warmup iterations
+            warmup=1,  # profiling iterations
+            active=2,  # iterations to capture
+            repeat=2  # repeat the schedule
+        )
         self.profiler = torch.profiler.profile(
             activities=activities,
+            schedule=schedule,
             record_shapes=self.profile_memory,
             profile_memory=self.profile_memory,
             with_stack=self.profile_memory,
