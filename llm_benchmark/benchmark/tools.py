@@ -200,10 +200,10 @@ def run_benchmark(
 
     profiler_stats = get_profiler_result(result_dir)
 
-    run_id_dir = os.path.join(result_dir, 'traces', run_id)
-    os.makedirs(run_id_dir, exist_ok=True)
-    for file in os.listdir(traces_dir):
-        if file.startswith("profiler_trace_") and file.endswith(".json"):
-            shutil.move(os.path.join(traces_dir, file), run_id_dir)
+    # run_id_dir = os.path.join(result_dir, 'traces', run_id)
+    # os.makedirs(run_id_dir, exist_ok=True)
+    # for file in os.listdir(traces_dir):
+    #     if file.startswith("profiler_trace_") and file.endswith(".json"):
+    #         shutil.move(os.path.join(traces_dir, file), run_id_dir)
 
     return {**result_output, **profiler_stats}

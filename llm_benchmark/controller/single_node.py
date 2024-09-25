@@ -13,9 +13,9 @@ def build_docker_run_command(
 ) -> list:
     """Constructs the docker run command."""
     
-    env_vars = [f"-e='{k}={v}'" for k, v in env_values.items()] if env_values else []
-    env_vars.append(f"-e=ENGINE_CONFIG_ID={engine_config_id}")
-    env_vars.append(f"-e=PROFILER_RESULT_DIR=/root/results/")
+    env_vars = [f"-e {k}='{v}'" for k, v in env_values.items()] if env_values else []
+    env_vars.append(f"-e ENGINE_CONFIG_ID={engine_config_id}")
+    env_vars.append(f"-e PROFILER_RESULT_DIR=/root/results/")
 
     arg_vars = [f"--{k}={v}" for k, v in extra_args.items()] if extra_args else []
     
@@ -57,8 +57,16 @@ def deploy_model(
         print(f"Deploying with Docker image {docker_image}...")
         print("Executing Docker command: " + " ".join(docker_command))
 
+        engine_config_dir = f"{result_dir}/engine/{engine_config_id}"
+        os.makedirs(engine_config_dir, exist_ok=True)
+
+        with open(f"{engine_config_dir}/run_docker.sh", "w") as bash_file:
+            bash_file.write(" ".join(docker_command))
+        os.chmod(f"{engine_config_dir}/run_docker.sh", 0o755)
+        print("Docker command saved to run_docker.sh for execution.")
+
         container = subprocess.run(
-            docker_command, capture_output=True, text=True, check=True
+            f"bash {engine_config_dir}/run_docker.sh", capture_output=True, text=True, check=True, shell=True
         )
         container_id = container.stdout.strip()
         print(f"Container ID: {container_id}")

@@ -1,15 +1,16 @@
 import time
 import json
 import psutil
-import pynvml
 import docker
 import asyncio
 from pathlib import Path
 from datetime import datetime
 
+from ..utils.device_utils import get_available_devices
+
 
 client = docker.from_env()
-pynvml.nvmlInit()
+nvml = None
 
 
 def get_container_stats(container_id: str):
@@ -83,6 +84,9 @@ def get_cpu_memory_usage(pid: int = None):
 
 
 def get_gpu_usage(pid: int = None):
+    if not nvml:
+        import pynvml
+        pynvml.nvmlInit()
     num_gpus = pynvml.nvmlDeviceGetCount()
     gpu_metrics = {}
 
@@ -130,13 +134,20 @@ async def log_system_metrics(
         with open(output_file, "a") as f:
             f.write("\n".join(log_data) + "\n")
 
+    devices = get_available_devices()
+
     try:
         while end_time is None or time.time() < end_time:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            cpu_memory_metrics = get_cpu_memory_usage(pid) or {}
+            cpu_memory_metrics = {}
+            gpu_metrics = {}
+            for device in devices:
+                if device == "cpu":
+                    cpu_memory_metrics = get_cpu_memory_usage(pid) or {}
+                elif device in ["cuda", "gpu"]:
+                    gpu_metrics = get_gpu_usage(pid) or {}
 
-            gpu_metrics = get_gpu_usage(pid) or {}
 
             log_data.append(
                 json.dumps(

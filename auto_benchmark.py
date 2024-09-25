@@ -272,4 +272,4 @@ if __name__ == "__main__":
     )
     args = args.parse_args()
 
-    asyncio.run(run_benchmark(args))
+    asyncio.run(main(args))

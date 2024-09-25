@@ -5,7 +5,7 @@ import datetime
 
 from .benchmark import flops_benchmark, memory_bandwidth_benchmark
 from .cpu import get_cpu_info
-from .cuda import get_gpu_info
+
 from llm_benchmark.utils.device_utils import get_available_devices
 
 
@@ -34,6 +34,7 @@ def get_hardware_info(output_dir=None):
             device_info = get_cpu_info()
             device_info.update(get_device_benchmarks(device))
         elif device in ["cuda", "gpu"]:
+            from .cuda import get_gpu_info
             device_info, raw_info = get_gpu_info()
             for info in device_info:
                 info.update(get_device_benchmarks(f"{device}:{info['device_id']}"))
