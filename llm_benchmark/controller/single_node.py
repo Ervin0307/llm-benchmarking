@@ -9,21 +9,22 @@ def build_docker_run_command(
     env_values: list,
     result_dir: str,
     extra_args: list,
-    engine_config_id: str
+    engine_config_id: str,
+    cpu_only: bool = False,
 ) -> list:
     """Constructs the docker run command."""
-    
+
     env_vars = [f"-e {k}='{v}'" for k, v in env_values.items()] if env_values else []
     env_vars.append(f"-e ENGINE_CONFIG_ID={engine_config_id}")
-    env_vars.append(f"-e PROFILER_RESULT_DIR=/root/results/")
+    env_vars.append("-e PROFILER_RESULT_DIR=/root/results/")
 
     arg_vars = [f"--{k}={v}" for k, v in extra_args.items()] if extra_args else []
-    
+
     volumes = [
         f"-v={os.path.expanduser('~')}/.cache:/root/.cache",
         f"-v={result_dir}:/root/results",
     ]
-    
+
     docker_command = [
         "docker",
         "run",
@@ -32,11 +33,19 @@ def build_docker_run_command(
         "--rm",
         "--privileged",
         "--network=host",
-        *env_vars,
-        *volumes,
-        docker_image,
-        *arg_vars
     ]
+
+    if not cpu_only:
+        docker_command.append("--gpus=all")
+
+    docker_command.extend(
+        [
+            *env_vars,
+            *volumes,
+            docker_image,
+            *arg_vars,
+        ]
+    )
 
     return docker_command
 
@@ -49,10 +58,11 @@ def deploy_model(
     engine_config_id: str,
     port: int,
     warmup_sec: int = 60,
+    cpu_only: bool = False,
 ) -> str:
     try:
         docker_command = build_docker_run_command(
-            docker_image, env_values, result_dir, extra_args, engine_config_id
+            docker_image, env_values, result_dir, extra_args, engine_config_id, cpu_only
         )
         print(f"Deploying with Docker image {docker_image}...")
         print("Executing Docker command: " + " ".join(docker_command))
@@ -66,7 +76,11 @@ def deploy_model(
         print("Docker command saved to run_docker.sh for execution.")
 
         container = subprocess.run(
-            f"bash {engine_config_dir}/run_docker.sh", capture_output=True, text=True, check=True, shell=True
+            f"bash {engine_config_dir}/run_docker.sh",
+            capture_output=True,
+            text=True,
+            check=True,
+            shell=True,
         )
         container_id = container.stdout.strip()
         print(f"Container ID: {container_id}")
@@ -121,3 +135,20 @@ def verify_server_status(
 
     print(f"Server failed to start after {max_retries} retries.")
     return False
+
+
+def get_container_pid(container_id: str):
+    pid = None
+    try:
+        output = subprocess.run(
+            ["docker", "inspect", "--format='{{.State.Pid}}'", container_id],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        pid = int(output.stdout.strip())
+        print(f"Container {pid} removed.")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to get container {container_id} pid. Docker error: {e.stderr}")
+    finally:
+        return pid

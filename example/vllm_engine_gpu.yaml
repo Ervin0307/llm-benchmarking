@@ -1,0 +1,43 @@
+args:
+  model: meta-llama/Meta-Llama-3-8B-Instruct
+  port: 8989
+  tensor-parallel-size:
+    - 1
+    # - 2
+  block-size:
+    - 8
+    # - 16
+    # - 32
+  distributed-executor-backend: mp
+  swap-space:
+    # - 4
+    - 16
+  # max-num-batched-tokens:
+  #   - 8192
+  #   - 16384
+  max-num-seqs:
+    - 64
+    # - 128
+    # - 256
+  # rope-scaling: 
+  #   - '{"rope_type":"llama3","factor":1.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
+  #   - '{"rope_type":"llama3","factor":2.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
+  num-scheduler-steps:
+    - 1
+    # - 2
+    # - 4
+  scheduler-delay-factor:
+    - 0.0
+    # - 0.5
+    # - 1.0
+  max-model-len: 8192
+
+
+envs:
+  VLLM_CPU_KVCACHE_SPACE:
+    # - 4
+    # - 16
+    - 40
+  # VLLM_ATTENTION_BACKEND: TORCH_SDPA
+  # VLLM_CPU_OMP_THREADS_BIND: '0-53|56-109'
+  CUDA_VISIBLE_DEVICES: 1,2

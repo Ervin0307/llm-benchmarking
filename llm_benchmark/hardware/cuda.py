@@ -1,12 +1,13 @@
 import re
+import pynvml
 import subprocess
 
-import pycuda.driver as cuda
-import pycuda.autoinit
 
-
-def get_gpu_specs_pycuda():
+def get_extra_gpu_attributes():
     """Uses pycuda to extract additional GPU specs like CUDA cores and SM count."""
+    import pycuda.driver as cuda
+    import pycuda.autoinit
+
     num_gpus = cuda.Device.count()
     gpu_specs = []
 
@@ -62,529 +63,415 @@ def get_gpu_specs_pycuda():
             try:
                 gpu_info[key.lower()] = attributes[getattr(cuda.device_attribute, key)]
             except AttributeError:
-                gpu_info[key.lower()] = None
+                pass
 
         gpu_specs.append(gpu_info)
 
     return gpu_specs
 
 
-def get_gpu_specs_smi():
-    gpu_specs = {}
+def filter_nvidia_smi(filters: list = None):
+    result = subprocess.run(
+        ["nvidia-smi", "-q"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(result.stderr)
+
+    if filters is None or not len(filters):
+        return result.stdout
+
+    lines = result.stdout.splitlines()
+    gpu_info_list = []
+    gpu_info = {}
+    for line in lines:
+        line = line.strip()
+        if any(key.lower() in line.lower() for key in filters):
+            # Extract key-value pairs from the relevant lines
+            match = re.match(r"(.+?)\s*:\s*(.+)", line)
+            if match:
+                key = match.group(1).strip().lower().replace(" ", "_").replace(".", "_")
+                value = match.group(2).strip()
+                if not key.startswith("gpu"):
+                    key = f"gpu_{key}"
+
+                if key in gpu_info:
+                    gpu_info_list.append(gpu_info)
+                    gpu_info = {}
+
+                gpu_info[key] = value
+
+    if len(gpu_info):
+        gpu_info_list.append(gpu_info)
+
+    return gpu_info_list
+
+
+def get_clock_info(device_id, current_only: bool = False):
+    handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+
+    current_clocks = {
+        "gpu_mem_clock_current": pynvml.nvmlDeviceGetClockInfo(
+            handle, pynvml.NVML_CLOCK_MEM
+        ),
+        "gpu_sm_clock_current": pynvml.nvmlDeviceGetClockInfo(
+            handle, pynvml.NVML_CLOCK_SM
+        ),
+        "gpu_graphics_clock_current": pynvml.nvmlDeviceGetClockInfo(
+            handle, pynvml.NVML_CLOCK_GRAPHICS
+        ),
+    }
+
+    if current_only:
+        return current_clocks
+
+    # Memory clocks
+    supported_mem_clocks = pynvml.nvmlDeviceGetSupportedMemoryClocks(handle)
+    min_mem_clock = min(supported_mem_clocks) if supported_mem_clocks else None
+    app_mem_clock = pynvml.nvmlDeviceGetApplicationsClock(handle, pynvml.NVML_CLOCK_MEM)
+    max_mem_clock = pynvml.nvmlDeviceGetMaxClockInfo(handle, pynvml.NVML_CLOCK_MEM)
+
+    # SM clocks
+    app_sm_clock = pynvml.nvmlDeviceGetApplicationsClock(handle, pynvml.NVML_CLOCK_SM)
+    max_sm_clock = pynvml.nvmlDeviceGetMaxClockInfo(handle, pynvml.NVML_CLOCK_SM)
+
+    # Graphics clocks
+    supported_graphics_clocks = pynvml.nvmlDeviceGetSupportedGraphicsClocks(
+        handle, max_mem_clock
+    )
+    min_graphics_clock = (
+        min(supported_graphics_clocks) if supported_graphics_clocks else None
+    )
+    app_graphics_clock = pynvml.nvmlDeviceGetApplicationsClock(
+        handle, pynvml.NVML_CLOCK_GRAPHICS
+    )
+    max_graphics_clock = pynvml.nvmlDeviceGetMaxClockInfo(
+        handle, pynvml.NVML_CLOCK_GRAPHICS
+    )
+
+    clock_info = {
+        **current_clocks,
+        "gpu_sm_clock_app": app_sm_clock,
+        "gpu_sm_clock_max": max_sm_clock,
+        "gpu_memory_freq_min": min_mem_clock,
+        "gpu_memory_freq_app": app_mem_clock,
+        "gpu_memory_freq_max": max_mem_clock,
+        "gpu_graphics_freq_min": min_graphics_clock,
+        "gpu_graphics_freq_app": app_graphics_clock,
+        "gpu_graphics_freq_max": max_graphics_clock,
+    }
 
     try:
-
-        def extract_value(pattern, text, default="N/A"):
-            match = re.search(pattern, text)
-            return match.group(1).strip() if match else default
-
-        def parse_pci_info(nvidia_smi_output):
-            pci_info = {
-                "pcie_generation_max": None,
-                "pcie_generation_current": None,
-                "pcie_device_current": None,
-                "pcie_device_max": None,
-                "pcie_host_max": None,
-                "link_width_max": None,
-                "link_width_current": None,
-                "tx_throughput": None,
-                "rx_throughput": None,
-            }
-
-            lines = nvidia_smi_output.splitlines()
-            capturing = False
-            for i, line in enumerate(lines):
-                line = line.strip()
-
-                # Start capturing when PCIe Generation is found
-                if line.startswith("PCIe Generation"):
-                    capturing = True
-                    continue
-
-                if capturing:
-                    if line == "":
-                        break
-
-                    # Capture PCIe Generation details
-                    match = re.match(r"\s*Max\s*:\s*(\d+)", line)
-                    if match and pci_info["pcie_generation_max"] is None:
-                        pci_info["pcie_generation_max"] = match.group(1)
-
-                    match = re.match(r"\s*Current\s*:\s*(\d+)", line)
-                    if match and pci_info["pcie_generation_current"] is None:
-                        pci_info["pcie_generation_current"] = match.group(1)
-
-                    match = re.match(r"\s*Device Current\s*:\s*(\d+)", line)
-                    if match and pci_info["pcie_device_current"] is None:
-                        pci_info["pcie_device_current"] = match.group(1)
-
-                    match = re.match(r"\s*Device Max\s*:\s*(\d+)", line)
-                    if match and pci_info["pcie_device_max"] is None:
-                        pci_info["pcie_device_max"] = match.group(1)
-
-                    match = re.match(r"\s*Host Max\s*:\s*(N/A|\d+)", line)
-                    if match and pci_info["pcie_host_max"] is None:
-                        pci_info["pcie_host_max"] = match.group(1)
-
-                    # Check for Link Width and Throughput details
-                    if line.startswith("Link Width"):
-                        link_width_max = lines[i + 1].strip()
-                        link_width_current = lines[i + 2].strip()
-
-                        match = re.match(r"\s*Max\s*:\s*(\d+x)", link_width_max)
-                        if match and pci_info["link_width_max"] is None:
-                            pci_info["link_width_max"] = match.group(1)
-
-                        match = re.match(r"\s*Current\s*:\s*(\d+x)", link_width_current)
-                        if match and pci_info["link_width_current"] is None:
-                            pci_info["link_width_current"] = match.group(1)
-
-                    # Capture Throughput details
-                    if line.startswith("Tx Throughput"):
-                        match = re.match(r"Tx Throughput\s*:\s*(\d+\s*KB/s)", line)
-                        if match and pci_info["tx_throughput"] is None:
-                            pci_info["tx_throughput"] = match.group(1)
-
-                    if line.startswith("Rx Throughput"):
-                        match = re.match(r"Rx Throughput\s*:\s*(\d+\s*KB/s)", line)
-                        if match and pci_info["rx_throughput"] is None:
-                            pci_info["rx_throughput"] = match.group(1)
-
-            return pci_info
-
-        def parse_clocks_event_reasons(nvidia_smi_output):
-            clocks_info = {
-                "event_idle": None,
-                "event_applications_clocks_setting": None,
-                "event_sw_power_cap": None,
-                "event_hw_slowdown": None,
-                "event_hw_thermal_slowdown": None,
-                "event_sw_thermal_slowdown": None,
-                "event_hw_power_brake_slowdown": None,
-                "event_sync_boost": None,
-                "event_display_clock_setting": None,
-            }
-
-            lines = nvidia_smi_output.splitlines()
-            capturing = False
-            for i, line in enumerate(lines):
-                line = line.strip()
-
-                # Start capturing when "Clocks Event Reasons" is found
-                if line.startswith("Clocks Event Reasons"):
-                    capturing = True
-                    continue
-
-                if capturing:
-                    # Stop capturing when we reach a line that doesn't belong
-                    if line == "":
-                        break
-
-                    # Capture each event reason status
-                    match = re.match(r"Idle\s*:\s*(.*)", line)
-                    if match:
-                        clocks_info["event_idle"] = match.group(1).strip()
-
-                    match = re.match(r"Applications Clocks Setting\s*:\s*(.*)", line)
-                    if match:
-                        clocks_info["event_applications_clocks_setting"] = match.group(
-                            1
-                        ).strip()
-
-                    match = re.match(r"SW Power Cap\s*:\s*(.*)", line)
-                    if match:
-                        clocks_info["event_sw_power_cap"] = match.group(1).strip()
-
-                    match = re.match(r"HW Slowdown\s*:\s*(.*)", line)
-                    if match:
-                        clocks_info["event_hw_slowdown"] = match.group(1).strip()
-
-                    if line.startswith("HW Thermal Slowdown"):
-                        match = re.match(r"\s*HW Thermal Slowdown\s*:\s*(.*)", line)
-                        if match:
-                            clocks_info["event_hw_thermal_slowdown"] = match.group(
-                                1
-                            ).strip()
-
-                    match = re.match(r"SW Thermal Slowdown\s*:\s*(.*)", line)
-                    if match:
-                        clocks_info["event_sw_thermal_slowdown"] = match.group(
-                            1
-                        ).strip()
-
-                    if line.startswith("HW Power Brake Slowdown"):
-                        match = re.match(r"\s*HW Power Brake Slowdown\s*:\s*(.*)", line)
-                        if match:
-                            clocks_info["event_hw_power_brake_slowdown"] = match.group(
-                                1
-                            ).strip()
-
-                    match = re.match(r"Sync Boost\s*:\s*(.*)", line)
-                    if match:
-                        clocks_info["event_sync_boost"] = match.group(1).strip()
-
-                    match = re.match(r"Display Clock Setting\s*:\s*(.*)", line)
-                    if match:
-                        clocks_info["event_display_clock_setting"] = match.group(
-                            1
-                        ).strip()
-
-            return clocks_info
-
-        def parse_memory_usage(nvidia_smi_output):
-            memory_info = {
-                "fb_memory_total": None,
-                "fb_memory_reserved": None,
-                "fb_memory_used": None,
-                "fb_memory_free": None,
-                "bar1_memory_total": None,
-                "bar1_memory_used": None,
-                "bar1_memory_free": None,
-                "conf_memory_total": None,
-                "conf_memory_used": None,
-                "conf_memory_free": None,
-            }
-
-            lines = nvidia_smi_output.splitlines()
-            capturing_fb = False
-            capturing_bar1 = False
-            capturing_conf = False
-            for line in lines:
-                line = line.strip()
-
-                # Start capturing FB Memory Usage
-                if line.startswith("FB Memory Usage"):
-                    capturing_fb = True
-                    capturing_bar1 = False
-                    capturing_conf = False
-                    continue
-
-                # Start capturing BAR1 Memory Usage
-                if line.startswith("BAR1 Memory Usage"):
-                    capturing_bar1 = True
-                    capturing_fb = False
-                    capturing_conf = False
-                    continue
-
-                # Start capturing Conf Compute Protected Memory Usage
-                if line.startswith("Conf Compute Protected Memory Usage"):
-                    capturing_conf = True
-                    capturing_fb = False
-                    capturing_bar1 = False
-                    continue
-
-                if capturing_fb:
-                    if "Total" in line:
-                        match = re.match(r"Total\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["fb_memory_total"] = match.group(1).strip()
-                    elif "Reserved" in line:
-                        match = re.match(r"Reserved\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["fb_memory_reserved"] = match.group(1).strip()
-                    elif "Used" in line:
-                        match = re.match(r"Used\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["fb_memory_used"] = match.group(1).strip()
-                    elif "Free" in line:
-                        match = re.match(r"Free\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["fb_memory_free"] = match.group(1).strip()
-
-                elif capturing_bar1:
-                    if "Total" in line:
-                        match = re.match(r"Total\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["bar1_memory_total"] = match.group(1).strip()
-                    elif "Used" in line:
-                        match = re.match(r"Used\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["bar1_memory_used"] = match.group(1).strip()
-                    elif "Free" in line:
-                        match = re.match(r"Free\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["bar1_memory_free"] = match.group(1).strip()
-
-                elif capturing_conf:
-                    if "Total" in line:
-                        match = re.match(r"Total\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["conf_memory_total"] = match.group(1).strip()
-                    elif "Used" in line:
-                        match = re.match(r"Used\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["conf_memory_used"] = match.group(1).strip()
-                    elif "Free" in line:
-                        match = re.match(r"Free\s*:\s*(\d+)\s*MiB", line)
-                        if match:
-                            memory_info["conf_memory_free"] = match.group(1).strip()
-
-            return memory_info
-
-        def parse_temperature_and_power(nvidia_smi_output):
-            power_info = {
-                "gpu_current_temp": None,
-                "memory_current_temp": None,
-                "gpu_max_operating_temp": None,
-                "gpu_shutdown_temp": None,
-                "gpu_slowdown_temp": None,
-                "gpu_t_limit_temp": None,
-                "memory_max_operating_temp": None,
-                "power_draw": None,
-                "current_power_limit": None,
-                "requested_power_limit": None,
-                "default_power_limit": None,
-                "min_power_limit": None,
-                "max_power_limit": None,
-            }
-
-            lines = nvidia_smi_output.splitlines()
-            capturing_temperature = False
-            capturing_power = False
-            for line in lines:
-                line = line.strip()
-
-                # Start capturing Temperature readings
-                if line.startswith("Temperature"):
-                    capturing_temperature = True
-                    capturing_power = False
-                    continue
-
-                # Start capturing Power readings
-                if line.startswith("GPU Power Readings"):
-                    capturing_power = True
-                    capturing_temperature = False
-                    continue
-
-                if capturing_temperature:
-                    if "GPU Current Temp" in line:
-                        match = re.match(r"GPU Current Temp\s*:\s*(\d+)\s*C", line)
-                        if match:
-                            power_info["gpu_current_temp"] = match.group(1).strip()
-                    elif "Memory Current Temp" in line:
-                        match = re.match(r"Memory Current Temp\s*:\s*(\d+)\s*C", line)
-                        if match:
-                            power_info["memory_current_temp"] = match.group(1).strip()
-                    elif "GPU Max Operating Temp" in line:
-                        match = re.match(
-                            r"GPU Max Operating Temp\s*:\s*(\d+)\s*C", line
-                        )
-                        if match:
-                            power_info["gpu_max_operating_temp"] = match.group(
-                                1
-                            ).strip()
-                    elif "GPU Shutdown Temp" in line:
-                        match = re.match(r"GPU Shutdown Temp\s*:\s*(\d+)\s*C", line)
-                        if match:
-                            power_info["gpu_shutdown_temp"] = match.group(1).strip()
-                    elif "GPU Slowdown Temp" in line:
-                        match = re.match(r"GPU Slowdown Temp\s*:\s*(\d+)\s*C", line)
-                        if match:
-                            power_info["gpu_slowdown_temp"] = match.group(1).strip()
-                    elif "GPU T.Limit Temp" in line:
-                        match = re.match(r"GPU T\.Limit Temp\s*:\s*(N/A|\d+)\s*C", line)
-                        if match:
-                            power_info["gpu_t_limit_temp"] = match.group(1).strip()
-                    elif "Memory Max Operating Temp" in line:
-                        match = re.match(
-                            r"Memory Max Operating Temp\s*:\s*(\d+)\s*C", line
-                        )
-                        if match:
-                            power_info["memory_max_operating_temp"] = match.group(
-                                1
-                            ).strip()
-
-                elif capturing_power:
-                    if "Power Draw" in line:
-                        match = re.match(r"Power Draw\s*:\s*([\d.]+)\s*W", line)
-                        if match:
-                            power_info["power_draw"] = match.group(1).strip()
-                    elif "Current Power Limit" in line:
-                        match = re.match(
-                            r"Current Power Limit\s*:\s*([\d.]+)\s*W", line
-                        )
-                        if match:
-                            power_info["current_power_limit"] = match.group(1).strip()
-                    elif "Requested Power Limit" in line:
-                        match = re.match(
-                            r"Requested Power Limit\s*:\s*([\d.]+)\s*W", line
-                        )
-                        if match:
-                            power_info["requested_power_limit"] = match.group(1).strip()
-                    elif "Default Power Limit" in line:
-                        match = re.match(
-                            r"Default Power Limit\s*:\s*([\d.]+)\s*W", line
-                        )
-                        if match:
-                            power_info["default_power_limit"] = match.group(1).strip()
-                    elif "Min Power Limit" in line:
-                        match = re.match(r"Min Power Limit\s*:\s*([\d.]+)\s*W", line)
-                        if match:
-                            power_info["min_power_limit"] = match.group(1).strip()
-                    elif "Max Power Limit" in line:
-                        match = re.match(r"Max Power Limit\s*:\s*([\d.]+)\s*W", line)
-                        if match:
-                            power_info["max_power_limit"] = match.group(1).strip()
-
-            return power_info
-
-        def parse_clocks_and_voltage(nvidia_smi_output):
-            clocks_info = {
-                "graphics_clock": None,
-                "sm_clock": None,
-                "memory_clock": None,
-                "video_clock": None,
-                "max_graphics_clock": None,
-                "max_sm_clock": None,
-                "max_memory_clock": None,
-                "max_video_clock": None,
-                "auto_boost": None,
-                "graphics_voltage": None,
-            }
-
-            lines = nvidia_smi_output.splitlines()
-            capturing_clocks = False
-            capturing_max_clocks = False
-            capturing_clock_policy = False
-            capturing_voltage = False
-            for line in lines:
-                line = line.strip()
-
-                # Start capturing Clocks
-                if line.startswith("Clocks"):
-                    capturing_clocks = True
-                    capturing_max_clocks = False
-                    capturing_clock_policy = False
-                    capturing_voltage = False
-                    continue
-
-                # Start capturing Max Clocks
-                if line.startswith("Max Clocks"):
-                    capturing_max_clocks = True
-                    capturing_clocks = False
-                    capturing_clock_policy = False
-                    capturing_voltage = False
-                    continue
-
-                # Start capturing Clock Policy
-                if line.startswith("Clock Policy"):
-                    capturing_clock_policy = True
-                    capturing_clocks = False
-                    capturing_max_clocks = False
-                    capturing_voltage = False
-                    continue
-
-                # Start capturing Voltage
-                if line.startswith("Voltage"):
-                    capturing_voltage = True
-                    capturing_clocks = False
-                    capturing_max_clocks = False
-                    capturing_clock_policy = False
-                    continue
-
-                if capturing_clocks:
-                    if "Graphics" in line:
-                        match = re.match(r"Graphics\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["graphics_clock"] = match.group(1).strip()
-                    elif "SM" in line:
-                        match = re.match(r"SM\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["sm_clock"] = match.group(1).strip()
-                    elif "Memory" in line:
-                        match = re.match(r"Memory\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["memory_clock"] = match.group(1).strip()
-                    elif "Video" in line:
-                        match = re.match(r"Video\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["video_clock"] = match.group(1).strip()
-
-                elif capturing_max_clocks:
-                    if "Graphics" in line:
-                        match = re.match(r"Graphics\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["max_graphics_clock"] = match.group(1).strip()
-                    elif "SM" in line:
-                        match = re.match(r"SM\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["max_sm_clock"] = match.group(1).strip()
-                    elif "Memory" in line:
-                        match = re.match(r"Memory\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["max_memory_clock"] = match.group(1).strip()
-                    elif "Video" in line:
-                        match = re.match(r"Video\s*:\s*(\d+)\s*MHz", line)
-                        if match:
-                            clocks_info["max_video_clock"] = match.group(1).strip()
-
-                elif capturing_clock_policy:
-                    if "Auto Boost" in line:
-                        match = re.match(r"Auto Boost\s*:\s*(N/A|\S+)", line)
-                        if match:
-                            clocks_info["auto_boost"] = match.group(1).strip()
-
-                elif capturing_voltage:
-                    if "Graphics" in line:
-                        match = re.match(r"Graphics\s*:\s*([\d.]+)\s*mV", line)
-                        if match:
-                            clocks_info["graphics_voltage"] = match.group(1).strip()
-
-            return clocks_info
-
-        result = subprocess.run(
-            ["nvidia-smi", "-q"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            universal_newlines=True,
+        clock_info["auto_boost_clocks_enabled"] = ",".join(
+            map(str, pynvml.nvmlDeviceGetAutoBoostedClocksEnabled(handle))
         )
-        if result.returncode != 0:
-            raise ValueError(result.stderr)
+    except pynvml.NVMLError as e:
+        clock_info["auto_boost_clocks_enabled"] = str(e)
 
-        gpu_specs = []
-        devices = re.split(r"\nGPU [0-9A-Fa-f:.]+", result.stdout)
+    return clock_info
 
-        for idx, device in enumerate(devices[1:]):
-            gpu_specs.append(
+
+def get_throttle_reasons(device_id):
+    handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+
+    throttle_reasons = {
+        pynvml.nvmlClocksThrottleReasonGpuIdle: "GPUIdle",
+        pynvml.nvmlClocksThrottleReasonHwSlowdown: "HwSlowdown",
+        pynvml.nvmlClocksThrottleReasonSwPowerCap: "SwPowerCap",
+        pynvml.nvmlClocksThrottleReasonUserDefinedClocks: "UserDefinedClocks",
+        pynvml.nvmlClocksThrottleReasonApplicationsClocksSetting: "ApplicationClocksSetting",
+        pynvml.nvmlClocksThrottleReasonAll: "All",
+        pynvml.nvmlClocksThrottleReasonUnknown: "Unkown",
+        pynvml.nvmlClocksThrottleReasonNone: None,
+    }
+    code = pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(handle)
+    return throttle_reasons.get(code, str(code))
+
+
+def get_temp_and_power_info(device_id, current_only: bool = False):
+    handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+
+    tp_info = {
+        "gpu_current_temperature": pynvml.nvmlDeviceGetTemperature(
+            handle, pynvml.NVML_TEMPERATURE_GPU
+        ),
+        "gpu_memory_current_temperature": None,
+        "gpu_power_draw": pynvml.nvmlDeviceGetPowerUsage(handle) / 1000,
+        "gpu_power_mode": pynvml.nvmlDeviceGetPowerManagementMode(handle),
+        "gpu_power_state": pynvml.nvmlDeviceGetPowerState(handle),
+        "gpu_performance_state": pynvml.nvmlDeviceGetPerformanceState(handle),
+    }
+
+    try:
+        tp_info["gpu_fan_speed"] = pynvml.nvmlDeviceGetFanSpeed(handle)
+    except pynvml.NVMLError as e:
+        tp_info["gpu_fan_speed"] = str(e)
+
+    if current_only:
+        # Only add memory current temperature if available
+        temp_info = filter_nvidia_smi(["Memory Current Temp"])
+        if len(temp_info) > device_id:
+            tp_info["gpu_memory_current_temperature"] = temp_info[device_id].get(
+                "gpu_memory_current_temp"
+            )
+            if tp_info["gpu_memory_current_temperature"] is not None:
+                tp_info["gpu_memory_current_temperature"] = (
+                    tp_info["gpu_memory_current_temperature"]
+                    .strip()
+                    .replace("C", "")
+                    .strip()
+                )
+    else:
+        tp_info.update(
+            {
+                "gpu_shutdown_temperature": pynvml.nvmlDeviceGetTemperatureThreshold(
+                    handle, pynvml.NVML_TEMPERATURE_THRESHOLD_SHUTDOWN
+                ),
+                "gpu_slowdown_temperature": pynvml.nvmlDeviceGetTemperatureThreshold(
+                    handle, pynvml.NVML_TEMPERATURE_THRESHOLD_SLOWDOWN
+                ),
+                "gpu_current_power_limit": pynvml.nvmlDeviceGetPowerManagementLimit(
+                    handle
+                )
+                / 1000,
+                "gpu_default_power_limit": pynvml.nvmlDeviceGetPowerManagementDefaultLimit(
+                    handle
+                )
+                / 1000,
+            }
+        )
+
+        power_limit_constraints = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(
+            handle
+        )
+        if len(power_limit_constraints) >= 2:
+            tp_info.update(
                 {
-                    "device_id": idx,
-                    "product_name": extract_value(r"Product Name\s+:\s+(.+)", device),
-                    "product_brand": extract_value(r"Product Brand\s+:\s+(.+)", device),
-                    "architecture": extract_value(
-                        r"Product Architecture\s+:\s+(.+)", device
-                    ),
-                    "multi_gpu_board": extract_value(
-                        r"MultiGPU Board \s+:\s+(.+)", device
-                    ),
-                    "virtualization_mode": extract_value(
-                        r"Virtualization Mode\s+:\s+(.+)", device
-                    ),
-                    "host_vgpu_mode": extract_value(
-                        r"Host VGPU Mode\s+:\s+(.+)", device
-                    ),
-                    "fan_speed": extract_value(r"Fan Speed\s+:\s+(.+)", device),
-                    "performance_state": extract_value(
-                        r"Performance State\s+:\s+(.+)", device
-                    ),
-                    **parse_pci_info(device),
-                    **parse_clocks_event_reasons(device),
-                    **parse_memory_usage(device),
-                    **parse_temperature_and_power(device),
-                    **parse_clocks_and_voltage(device),
+                    "gpu_min_power_limit": power_limit_constraints[0] / 1000,
+                    "gpu_max_power_limit": power_limit_constraints[1] / 1000,
                 }
             )
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        return gpu_specs, result.stdout
+
+        temp_info = filter_nvidia_smi(
+            [
+                "GPU T.Limit Temp",
+                "GPU Max Operating Temp",
+                "GPU Target Temperature",
+                "Memory Current Temp",
+                "Memory Max Operating Temp",
+            ]
+        )
+        if len(temp_info) > device_id:
+            tp_info.update(
+                {
+                    key: value.strip().replace("C", "").strip()
+                    for key, value in temp_info[device_id].items()
+                }
+            )
+
+    return tp_info
+
+
+def get_pci_info(device_id, current_only: bool = False):
+    handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+
+    pcie_current_info = {
+        "pcie_generation_current": pynvml.nvmlDeviceGetCurrPcieLinkGeneration(handle),
+        "link_width_current": pynvml.nvmlDeviceGetCurrPcieLinkWidth(handle),
+        "tx_throughput": pynvml.nvmlDeviceGetPcieThroughput(
+            handle, pynvml.NVML_PCIE_UTIL_TX_BYTES
+        ),
+        "rx_throughput": pynvml.nvmlDeviceGetPcieThroughput(
+            handle, pynvml.NVML_PCIE_UTIL_RX_BYTES
+        ),
+    }
+
+    if current_only:
+        return pcie_current_info
+
+    # PCIe device information that remains static
+    pcie_static_info = {
+        "pcie_generation_max": pynvml.nvmlDeviceGetMaxPcieLinkGeneration(handle),
+        "link_width_max": pynvml.nvmlDeviceGetMaxPcieLinkWidth(handle),
+    }
+
+    pci_info = {
+        **pcie_current_info,
+        **pcie_static_info,
+        "pcie_host_max": None,
+        "pcie_device_current": None,
+        "pcie_device_max": None,
+    }
+
+    devices = re.split(r"\nGPU [0-9A-Fa-f:.]+", filter_nvidia_smi())
+    if len(devices) <= device_id + 1:
+        return pci_info
+
+    lines = devices[device_id + 1].splitlines()
+    capturing = False
+    for i, line in enumerate(lines):
+        line = line.strip()
+
+        if line.startswith("PCIe Generation"):
+            capturing = True
+            continue
+
+        if capturing:
+            if line == "":
+                break
+
+        match = re.match(r"\s*Device Current\s*:\s*(\d+)", line)
+        if match and pci_info["pcie_device_current"] is None:
+            pci_info["pcie_device_current"] = match.group(1)
+
+        match = re.match(r"\s*Device Max\s*:\s*(\d+)", line)
+        if match and pci_info["pcie_device_max"] is None:
+            pci_info["pcie_device_max"] = match.group(1)
+
+        match = re.match(r"\s*Host Max\s*:\s*(N/A|\d+)", line)
+        if match and pci_info["pcie_host_max"] is None:
+            pci_info["pcie_host_max"] = match.group(1)
+
+    return pci_info
+
+
+def get_memory_info(device_id):
+    mem_info = {}
+    try:
+        handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+
+        # Get FB memory info
+        fb_memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        mem_info.update(
+            {
+                "gpu_fb_memory_total": fb_memory_info.total / (1024**2),
+                "gpu_fb_memory_used": fb_memory_info.used / (1024**2),
+                "gpu_fb_memory_free": fb_memory_info.free / (1024**2),
+            }
+        )
+        # Get BAR1 memory info
+        bar1_memory_info = pynvml.nvmlDeviceGetBAR1MemoryInfo(handle)
+        mem_info.update(
+            {
+                "gpu_bar1_memory_total": bar1_memory_info.bar1Total / (1024**2),
+                "gpu_bar1_memory_used": bar1_memory_info.bar1Used / (1024**2),
+                "gpu_bar1_memory_free": bar1_memory_info.bar1Free / (1024**2),
+            }
+        )
+        return mem_info
+    except Exception:
+        print(
+            "GPU memory extraction attempt #1 failed, falling back to legacy parsing."
+        )
+
+    devices = re.split(r"\nGPU [0-9A-Fa-f:.]+", filter_nvidia_smi())
+    if len(devices) <= device_id + 1:
+        return mem_info
+
+    lines = devices[device_id + 1].splitlines()
+    capturing_fb = False
+    capturing_bar1 = False
+    for line in lines:
+        line = line.strip()
+
+        # Start capturing FB Memory Usage
+        if line.startswith("FB Memory Usage"):
+            capturing_fb = True
+            capturing_bar1 = False
+            continue
+
+        # Start capturing BAR1 Memory Usage
+        if line.startswith("BAR1 Memory Usage"):
+            capturing_bar1 = True
+            capturing_fb = False
+            continue
+
+        if capturing_fb:
+            if "Total" in line:
+                match = re.match(r"Total\s*:\s*(\d+)\s*MiB", line)
+                if match:
+                    mem_info["gpu_fb_memory_total"] = match.group(1).strip()
+            # elif "Reserved" in line:
+            #     match = re.match(r"Reserved\s*:\s*(\d+)\s*MiB", line)
+            #     if match:
+            #         mem_info["gpu_fb_memory_reserved"] = match.group(1).strip()
+            elif "Used" in line:
+                match = re.match(r"Used\s*:\s*(\d+)\s*MiB", line)
+                if match:
+                    mem_info["gpu_fb_memory_used"] = match.group(1).strip()
+            elif "Free" in line:
+                match = re.match(r"Free\s*:\s*(\d+)\s*MiB", line)
+                if match:
+                    mem_info["gpu_fb_memory_free"] = match.group(1).strip()
+
+        elif capturing_bar1:
+            if "Total" in line:
+                match = re.match(r"Total\s*:\s*(\d+)\s*MiB", line)
+                if match:
+                    mem_info["gpu_bar1_memory_total"] = match.group(1).strip()
+            elif "Used" in line:
+                match = re.match(r"Used\s*:\s*(\d+)\s*MiB", line)
+                if match:
+                    mem_info["gpu_bar1_memory_used"] = match.group(1).strip()
+            elif "Free" in line:
+                match = re.match(r"Free\s*:\s*(\d+)\s*MiB", line)
+                if match:
+                    mem_info["gpu_bar1_memory_free"] = match.group(1).strip()
+
+    return mem_info
 
 
 def get_gpu_info():
-    gpu_info, raw_info = get_gpu_specs_smi()
-    additional_specs = get_gpu_specs_pycuda()
+    pynvml.nvmlInit()
 
-    if len(gpu_info) == len(additional_specs):
-        for i in range(len(gpu_info)):
-            gpu_info[i].update(additional_specs[i])
+    smi_output = filter_nvidia_smi()
+    devices = re.split(r"\nGPU [0-9A-Fa-f:.]+", smi_output)
 
-    return gpu_info, raw_info
+    device_count = pynvml.nvmlDeviceGetCount()
+    extra_attrs = get_extra_gpu_attributes()
+
+    if len(devices) - 1 != device_count and len(extra_attrs) != device_count:
+        raise ValueError(
+            f"Mismatch in gpu counts b/w backend, got {len(devices)}, {device_count} & {len(extra_attrs)}."
+        )
+    devices = devices[1:]
+
+    def extract_value(pattern, text, default="N/A"):
+        match = re.search(pattern, text)
+        return match.group(1).strip() if match else default
+
+    gpu_info = []
+    try:
+        for device_id in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
+
+            gpu_info.append(
+                {
+                    "product_name": pynvml.nvmlDeviceGetName(handle).decode("utf-8"),
+                    "product_brand": pynvml.nvmlDeviceGetBrand(handle),
+                    "architecture": extract_value(
+                        r"Product Architecture\s+:\s+(.+)", devices[device_id]
+                    ),
+                    "multi_gpu_board": pynvml.nvmlDeviceGetMultiGpuBoard(handle),
+                    "virtualization_mode": extract_value(
+                        r"Virtualization Mode\s+:\s+(.+)", devices[device_id]
+                    ),
+                    "host_vgpu_mode": extract_value(
+                        r"Host VGPU Mode\s+:\s+(.+)", devices[device_id]
+                    ),
+                    **extra_attrs[device_id],
+                    **get_clock_info(device_id),
+                    **get_temp_and_power_info(device_id),
+                    **get_memory_info(device_id),
+                    **get_pci_info(device_id),
+                }
+            )
+
+    except Exception as e:
+        print(f"GPU spec extraction failed with {e}")
+    finally:
+        pynvml.nvmlShutdown()
+
+    return gpu_info, smi_output
