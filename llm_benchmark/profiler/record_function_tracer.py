@@ -57,7 +57,7 @@ class RecordFunctionTracer:
         )
         self.profiler = torch.profiler.profile(
             activities=activities,
-            # schedule=schedule,
+            schedule=schedule,
             record_shapes=self.profile_memory,
             profile_memory=self.profile_memory,
             with_stack=self.profile_memory,
