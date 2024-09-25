@@ -1,7 +1,7 @@
 import os
 import torch.nn as nn
 
-from typing import Optional, List
+from typing import Optional
 from functools import wraps
 
 import ray
@@ -12,9 +12,13 @@ from tqdm import tqdm
 from .constants import VllmProfileLayer
 from .record_function_tracer import RecordFunctionTracer
 from .device_timer import DeviceTimer
-from .utils.timer_stats_store import TimerStatsStore
-from .utils import get_collectives_inputs
+from .timer_stats_store import TimerStatsStore
+from .collectives.collectives_input import get_collectives_inputs
 from .collectives.benchmark_runner import create_runner_pool
+from llm_benchmark.utils.device_utils import (
+    get_available_devices,
+    get_tensor_parallel_sizes,
+)
 
 
 original_forwards = {}
@@ -117,54 +121,59 @@ def stop_profile():
 
 
 def profile_collectives(
-        num_workers_per_node_combinations: List[int],
-        max_collective_size: int,
-        collective: str,
-        device: str = "cpu", # "cpu" or "cuda"
-        output_dir: str = "results",
-    ):
+    max_collective_size: int,
+    output_dir: str = "results",
+):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    output_dir = os.path.join(output_dir, "collective")
+    os.makedirs(output_dir, exist_ok=True)
 
     ray.init(ignore_reinit_error=True)
 
-    total_workers_available, num_nodes, runner_pool = create_runner_pool(device)
+    devices = get_available_devices()
+    for device in devices:
+        for collective in ("all_reduce", "send_recv"):
+            total_workers_available, num_nodes, runner_pool = create_runner_pool(device)
+            num_workers_per_node_combinations = get_tensor_parallel_sizes(
+                total_workers_available
+            )
 
-    all_results = []
+            all_results = []
+            collectives_inputs = get_collectives_inputs(
+                num_nodes,
+                num_workers_per_node_combinations,
+                max_collective_size,
+                collective,
+                total_workers_available,
+            )
 
-    collectives_inputs = get_collectives_inputs(
-        num_nodes,
-        num_workers_per_node_combinations,
-        max_collective_size,
-        collective,
-        total_workers_available,
-    )   
+            for collectives_input in tqdm(collectives_inputs):
+                promises = []
+                for worker_id in range(total_workers_available):
+                    promise = runner_pool[worker_id].run_collective.remote(
+                        collectives_input
+                    )
+                    promises.append(promise)
 
-    for collectives_input in tqdm(collectives_inputs):
-        promises = []
-        for worker_id in range(total_workers_available):
-            promise = runner_pool[worker_id].run_collective.remote(collectives_input)
-            promises.append(promise)
+                for worker_id in range(int(total_workers_available)):
+                    result = ray.get([promises[worker_id]])[0]
+                    if result and worker_id == 0:
+                        all_results.append(result)
 
-        for worker_id in range(int(total_workers_available)):
-            result = ray.get([promises[worker_id]])[0]
-            if result and worker_id == 0:
-                all_results.append(result)  
+                ray.get(promises)
 
-        ray.get(promises)
+            # filter none results
+            all_results = [x for x in all_results if x is not None]
 
-    # filter none results
-    all_results = [x for x in all_results if x is not None]
+            df = pd.DataFrame(all_results)
+            # the time_stats column is a dict, so we need to expand it into columns recursively and add prefix
+            df = (
+                pd.json_normalize(df["time_stats"])
+                .add_prefix("time_stats.")
+                .join(df.drop(columns=["time_stats"]))
+            )
 
-    df = pd.DataFrame(all_results)
-    # the time_stats column is a dict, so we need to expand it into columns recursively and add prefix  
-    df = (
-        pd.json_normalize(df["time_stats"])
-        .add_prefix("time_stats.")
-        .join(df.drop(columns=["time_stats"]))
-    )
-
-    output_dir = f"{output_dir}/collective/"
-    os.makedirs(output_dir, exist_ok=True)
-    # write results to a csv file
-    df.to_csv(f"{output_dir}/{collective}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv")
-
-    return df
+            # write results to a csv file
+            df.to_csv(
+                os.path.join(output_dir, f"{device}_{collective}_{timestamp}.csv")
+            )

@@ -6,16 +6,16 @@ from .constants import FlopsPerCycle
 
 def calculate_flops_per_cycle(isa_info):
     flops_per_cycle = FlopsPerCycle.DEFAULT
-    if isa_info["AMX"]:
+    if isa_info.get("AMX"):
         # Estimate for AMX (assume 1024 FLOPs per cycle per core for AMX)
         flops_per_cycle = FlopsPerCycle.AMX
-    elif isa_info["AVX512"]:
+    elif isa_info.get("AVX512"):
         # Estimate for AVX-512 (assume 32 FLOPs per cycle per core for AVX-512)
         flops_per_cycle = FlopsPerCycle.AVX512
-    elif isa_info["AVX2"]:
+    elif isa_info.get("AVX2"):
         # Estimate for AVX2 (assume 16 FLOPs per cycle per core for AVX2)
         flops_per_cycle = FlopsPerCycle.AVX2
-    elif isa_info["AVX"]:
+    elif isa_info.get("AVX"):
         # Estimate for AVX (assume 8 FLOPs per cycle per core for AVX)
         flops_per_cycle = FlopsPerCycle.AVX
     else:
@@ -98,12 +98,11 @@ def get_cpu_info():
     info["cpu_memory_percentage"] = cpu_memory[3]
 
     temps = psutil.sensors_temperatures()
-    avg_temp_current = sum(int(temp.current) for temp in temps["coretemp"]) / len(
-        temps["coretemp"]
+    core_temp = temps.get("coretemp", [])
+    avg_temp_current = sum(int(temp.current) for temp in core_temp) / max(
+        1, len(core_temp)
     )
-    avg_temp_high = sum(int(temp.high) for temp in temps["coretemp"]) / len(
-        temps["coretemp"]
-    )
+    avg_temp_high = sum(int(temp.high) for temp in core_temp) / max(1, len(core_temp))
     info["cpu_temp_current"] = avg_temp_current
     info["cpu_temp_high"] = avg_temp_high
 

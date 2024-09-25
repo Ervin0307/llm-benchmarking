@@ -3,7 +3,7 @@ import torch
 
 from .collectives_impl import GraphedCollective
 from ..device_timer import DeviceTimer
-from ..utils.timer_stats_store import TimerStatsStore
+from ..timer_stats_store import TimerStatsStore
 
 WARMUP_STEPS = 1
 ACTIVE_STEPS = 3

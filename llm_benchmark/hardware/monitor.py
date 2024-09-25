@@ -4,18 +4,12 @@ import psutil
 import pynvml
 import docker
 import asyncio
-import subprocess
 from pathlib import Path
 from datetime import datetime
 
 
 client = docker.from_env()
 pynvml.nvmlInit()
-
-
-async def write_metrics_to_file(log_data, output_file):
-    with open(output_file, "a") as f:
-        f.write("\n".join(log_data) + "\n")
 
 
 def get_container_stats(container_id: str):
@@ -96,19 +90,32 @@ def get_gpu_usage(pid: int = None):
         handle = pynvml.nvmlDeviceGetHandleByIndex(i)
         gpu_util = pynvml.nvmlDeviceGetUtilizationRates(handle)
         mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000  # convert to watts
+        temperature = pynvml.nvmlDeviceGetTemperature(
+            handle, pynvml.NVML_TEMPERATURE_GPU
+        )
+        power_limit = (
+            pynvml.nvmlDeviceGetPowerManagementLimit(handle) / 1000
+        )  # convert to watts
 
         gpu_metrics[f"gpu_{i}"] = {
             "gpu_percent": gpu_util.gpu,
             "gpu_memory_total": mem_info.total,
             "gpu_memory_used": mem_info.used,
             "gpu_memory_percent": (mem_info.used / mem_info.total) * 100,
+            "power_usage": power_usage,
+            "temperature": temperature,
+            "power_limit": power_limit,
         }
 
     return gpu_metrics
 
 
 async def log_system_metrics(
-    output_path: str, pid: int = None, interval: int = 5, duration: int = None
+    output_dir: str,
+    pid: int = None,
+    interval: int = 5,
+    duration: int = None,
 ):
     log_data = []
     end_time = (time.time() + duration) if duration is not None else None
@@ -116,8 +123,12 @@ async def log_system_metrics(
         f"Logging system metrics (pid={pid}) every {interval} seconds for {duration} seconds..."
     )
 
-    Path(output_path).parent.mkdir(exist_ok=True, parents=True)
-    output_file = Path(output_path, "system_metrics.jsonl")
+    Path(output_dir).parent.mkdir(exist_ok=True, parents=True)
+    output_file = Path(output_dir, "system_metrics.jsonl")
+
+    async def write_metrics_to_file(log_data, output_file):
+        with open(output_file, "a") as f:
+            f.write("\n".join(log_data) + "\n")
 
     try:
         while end_time is None or time.time() < end_time:
@@ -153,4 +164,4 @@ async def log_system_metrics(
 
 
 if __name__ == "__main__":
-    asyncio.run(log_system_metrics(output_path=".", pid=1508558, interval=5))
+    asyncio.run(log_system_metrics(output_dir="./"))
