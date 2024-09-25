@@ -71,11 +71,11 @@ class RecordFunctionTracer:
         if not self.cpu_only:
             torch.cuda.synchronize()
 
-        # self.export_profiler_trace(
-        #     sort_by="self_cuda_time_total",
-        #     with_flops=self.with_flops,
-        #     profile_memory=self.profile_memory,
-        # )
+        self.export_profiler_trace(
+            sort_by="self_cuda_time_total",
+            with_flops=self.with_flops,
+            profile_memory=self.profile_memory,
+        )
 
     def export_profiler_trace(
         self,
