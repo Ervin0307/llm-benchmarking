@@ -166,12 +166,15 @@ def run_benchmark(args, engine_config=None):
             result["concurrency"] = config["concurrency"]
 
             results.append(result)
+            log_metrics_task.cancel()
+            
             
             stop_event.set()
             log_metrics_task.join()
             log_metrics_task = None
             stop_event = None
             
+            benchmark_tools.create_summary([result], os.environ["PROFILER_RESULT_DIR"])
             print(result)
     except Exception as e:
         print(f"Error during benchmark: {e}")
@@ -181,8 +184,6 @@ def run_benchmark(args, engine_config=None):
         if log_metrics_task is not None and stop_event is not None:
             stop_event.set()
             log_metrics_task.join()
-
-    benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
 
 
 def main(args):
