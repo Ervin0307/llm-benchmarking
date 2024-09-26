@@ -3,6 +3,45 @@ import pynvml
 import subprocess
 
 
+def filter_nvidia_smi(filters: list = None):
+    result = subprocess.run(
+        ["nvidia-smi", "-q"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(result.stderr)
+
+    if filters is None or not len(filters):
+        return result.stdout
+
+    lines = result.stdout.splitlines()
+    gpu_info_list = []
+    gpu_info = {}
+    for line in lines:
+        line = line.strip()
+        if any(key.lower() in line.lower() for key in filters):
+            # Extract key-value pairs from the relevant lines
+            match = re.match(r"(.+?)\s*:\s*(.+)", line)
+            if match:
+                key = match.group(1).strip().lower().replace(" ", "_").replace(".", "_")
+                value = match.group(2).strip()
+                if not key.startswith("gpu"):
+                    key = f"gpu_{key}"
+
+                if key in gpu_info:
+                    gpu_info_list.append(gpu_info)
+                    gpu_info = {}
+
+                gpu_info[key] = value
+
+    if len(gpu_info):
+        gpu_info_list.append(gpu_info)
+
+    return gpu_info_list
+
+
 def get_extra_gpu_attributes():
     """Uses pycuda to extract additional GPU specs like CUDA cores and SM count."""
     import pycuda.driver as cuda
@@ -70,46 +109,7 @@ def get_extra_gpu_attributes():
     return gpu_specs
 
 
-def filter_nvidia_smi(filters: list = None):
-    result = subprocess.run(
-        ["nvidia-smi", "-q"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-    )
-    if result.returncode != 0:
-        raise ValueError(result.stderr)
-
-    if filters is None or not len(filters):
-        return result.stdout
-
-    lines = result.stdout.splitlines()
-    gpu_info_list = []
-    gpu_info = {}
-    for line in lines:
-        line = line.strip()
-        if any(key.lower() in line.lower() for key in filters):
-            # Extract key-value pairs from the relevant lines
-            match = re.match(r"(.+?)\s*:\s*(.+)", line)
-            if match:
-                key = match.group(1).strip().lower().replace(" ", "_").replace(".", "_")
-                value = match.group(2).strip()
-                if not key.startswith("gpu"):
-                    key = f"gpu_{key}"
-
-                if key in gpu_info:
-                    gpu_info_list.append(gpu_info)
-                    gpu_info = {}
-
-                gpu_info[key] = value
-
-    if len(gpu_info):
-        gpu_info_list.append(gpu_info)
-
-    return gpu_info_list
-
-
-def get_clock_info(device_id, current_only: bool = False):
+def get_cores_info(device_id, current_only: bool = False):
     handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
 
     current_clocks = {
@@ -122,6 +122,7 @@ def get_clock_info(device_id, current_only: bool = False):
         "gpu_graphics_clock_current": pynvml.nvmlDeviceGetClockInfo(
             handle, pynvml.NVML_CLOCK_GRAPHICS
         ),
+        "gpu_utilization": pynvml.nvmlDeviceGetUtilizationRates(handle).gpu,
     }
 
     if current_only:
@@ -462,7 +463,7 @@ def get_gpu_info():
                         r"Host VGPU Mode\s+:\s+(.+)", devices[device_id]
                     ),
                     **extra_attrs[device_id],
-                    **get_clock_info(device_id),
+                    **get_cores_info(device_id),
                     **get_temp_and_power_info(device_id),
                     **get_memory_info(device_id),
                     **get_pci_info(device_id),

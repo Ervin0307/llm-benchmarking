@@ -2,50 +2,19 @@ import os
 import csv
 import time
 import pynvml
-import psutil
 from pathlib import Path
 from copy import deepcopy
 from datetime import datetime
 
-from llm_benchmark.hardware import cuda as cuda_utils
+from . import cuda as cuda_utils
+from . import cpu as cpu_utils
 from llm_benchmark.utils.device_utils import get_available_devices
 
 
-def get_cpu_memory_usage(pid: int = None):
-    if pid is None:
-        cpu_percent_per_core = psutil.cpu_percent(interval=1, percpu=True)
-        memory_info = psutil.virtual_memory()
-
-        return {
-            "cpu_utilization": psutil.cpu_percent(interval=None),
-            "cpu_utilization_per_core": ",".join(map(str, cpu_percent_per_core)),
-            "cpu_memory_total": memory_info.total,
-            "cpu_memory_used": memory_info.used,
-            "cpu_memory_percent": memory_info.percent,
-        }
-    else:
-        try:
-            proc = psutil.Process(pid)
-            # Process-specific CPU and memory stats
-            cpu_percent = proc.cpu_percent(interval=None)
-            mem_info = proc.memory_info()
-            core_affinity = proc.cpu_affinity()
-
-            cpu_usage_per_core = [
-                psutil.cpu_percent(interval=None, percpu=True)[core]
-                for core in core_affinity
-            ]
-
-            return {
-                "cpu_utilization": cpu_percent,
-                "cpu_affinity_cores": core_affinity,
-                "cpu_utilization_per_core": ",".join(map(str, cpu_usage_per_core)),
-                "cpu_memory_used": mem_info.rss,  # Resident Set Size (physical memory usage)
-                "cpu_memory_percent": proc.memory_percent(),
-                "cpu_num_threads": proc.num_threads(),
-            }
-        except psutil.NoSuchProcess:
-            return
+def get_cpu_usage(pid: int = None):
+    info = cpu_utils.get_cores_and_mem_info(pid, current_only=True)
+    info.update(cpu_utils.get_temp_and_power_info(current_only=True))
+    return info
 
 
 def get_gpu_usage(pid: int = None):
@@ -53,8 +22,8 @@ def get_gpu_usage(pid: int = None):
     gpu_metrics = {}
 
     for idx in range(num_gpus):
-        info = cuda_utils.get_memory_info(idx)
-        info.update(cuda_utils.get_clock_info(idx, current_only=True))
+        info = cuda_utils.get_cores_info(idx, current_only=True)
+        info.update(cuda_utils.get_memory_info(idx))
         info.update(cuda_utils.get_temp_and_power_info(idx, current_only=True))
         info.update(cuda_utils.get_pci_info(idx, current_only=True))
         info["throttle_reason"] = cuda_utils.get_throttle_reasons(idx)
@@ -98,8 +67,11 @@ def log_system_metrics(
                 metrics = {}
 
             metrics["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            metrics.update(get_cpu_memory_usage(pid) or {})
+            cpu_usage_info = get_cpu_usage(pid) or {}
+            if not len(cpu_usage_info):
+                break
 
+            metrics.update(cpu_usage_info)
             if is_gpu_available:
                 metrics.update(get_gpu_usage(pid) or {})
 
@@ -119,4 +91,4 @@ def log_system_metrics(
         if is_gpu_available:
             pynvml.nvmlShutdown()
 
-        print(f"Metrics logged to {output_file}")
+    print(f"Metrics logged to {output_file}")
