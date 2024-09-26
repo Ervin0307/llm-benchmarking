@@ -20,6 +20,7 @@ def save_engine_config(args):
         config_dict[item] = getattr(args, item)
     engine_dir = get_engine_dir()
     os.makedirs(engine_dir, exist_ok=True)
+    print("Saving engine config to", engine_dir)
     with open(os.path.join(engine_dir, 'engine_config.json'), 'w') as f:
         json.dump(config_dict, f)
 
