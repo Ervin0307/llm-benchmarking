@@ -58,8 +58,7 @@ def create_engine_summary(engine, engine_config_id, model):
     csv_file_path = os.path.join(
         results_dir,
         model.replace("/", "--"),
-        "engine",
-        f"engine_{engine_config_id}.csv",
+        f"engine_config.csv",
     )
     os.makedirs(os.path.dirname(csv_file_path), exist_ok=True)
 
