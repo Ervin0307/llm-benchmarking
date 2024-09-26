@@ -1,178 +1,94 @@
+import os
+import csv
 import time
-import json
-import psutil
-import docker
-import asyncio
+import pynvml
 from pathlib import Path
+from copy import deepcopy
 from datetime import datetime
 
-from ..utils.device_utils import get_available_devices
+from . import cuda as cuda_utils
+from . import cpu as cpu_utils
+from llm_benchmark.utils.device_utils import get_available_devices
 
 
-client = docker.from_env()
-nvml = None
-
-
-def get_container_stats(container_id: str):
-    container = client.containers.get(container_id)
-    stats = container.stats(stream=False)
-
-    cpu_delta = (
-        stats["cpu_stats"]["cpu_usage"]["total_usage"]
-        - stats["precpu_stats"]["cpu_usage"]["total_usage"]
-    )
-    system_delta = (
-        stats["cpu_stats"]["system_cpu_usage"]
-        - stats["precpu_stats"]["system_cpu_usage"]
-    )
-    cpu_usage_percent = (
-        (cpu_delta / system_delta)
-        * len(stats["cpu_stats"]["cpu_usage"]["percpu_usage"])
-        * 100
-    )
-
-    mem_usage = stats["memory_stats"]["usage"]
-    mem_limit = stats["memory_stats"]["limit"]
-    mem_percent = (mem_usage / mem_limit) * 100
-
-    gpu_stats = stats.get("gpu_stats", {})
-
-    return {
-        "cpu_percent": cpu_usage_percent,
-        "memory_usage": mem_usage,
-        "memory_limit": mem_limit,
-        "memory_percent": mem_percent,
-        "gpu_stats": gpu_stats,
-    }
-
-
-def get_cpu_memory_usage(pid: int = None):
-    if pid is None:
-        cpu_percent_per_core = psutil.cpu_percent(interval=1, percpu=True)
-        memory_info = psutil.virtual_memory()
-
-        return {
-            "cpu_percent_total": psutil.cpu_percent(interval=None),
-            "cpu_percent_per_core": cpu_percent_per_core,
-            "memory_total": memory_info.total,
-            "memory_used": memory_info.used,
-            "memory_percent": memory_info.percent,
-        }
-    else:
-        try:
-            proc = psutil.Process(pid)
-            # Process-specific CPU and memory stats
-            cpu_percent = proc.cpu_percent(interval=None)
-            mem_info = proc.memory_info()
-            core_affinity = proc.cpu_affinity()
-
-            cpu_usage_per_core = {
-                f"core_{core}": psutil.cpu_percent(interval=None, percpu=True)[core]
-                for core in core_affinity
-            }
-
-            return {
-                "cpu_percent": cpu_percent,
-                "cpu_affinity_cores": core_affinity,
-                "cpu_usage_per_affinity_core": cpu_usage_per_core,
-                "memory_used": mem_info.rss,  # Resident Set Size (physical memory usage)
-                "memory_percent": proc.memory_percent(),
-                "num_threads": proc.num_threads(),
-            }
-        except psutil.NoSuchProcess:
-            return
+def get_cpu_usage(pid: int = None):
+    info = cpu_utils.get_cores_and_mem_info(pid, current_only=True)
+    info.update(cpu_utils.get_temp_and_power_info(current_only=True))
+    return info
 
 
 def get_gpu_usage(pid: int = None):
-    if not nvml:
-        import pynvml
-        pynvml.nvmlInit()
     num_gpus = pynvml.nvmlDeviceGetCount()
     gpu_metrics = {}
 
-    for i in range(num_gpus):
-        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-        gpu_util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        power_usage = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000  # convert to watts
-        temperature = pynvml.nvmlDeviceGetTemperature(
-            handle, pynvml.NVML_TEMPERATURE_GPU
-        )
-        power_limit = (
-            pynvml.nvmlDeviceGetPowerManagementLimit(handle) / 1000
-        )  # convert to watts
+    for idx in range(num_gpus):
+        info = cuda_utils.get_cores_info(idx, current_only=True)
+        info.update(cuda_utils.get_memory_info(idx))
+        info.update(cuda_utils.get_temp_and_power_info(idx, current_only=True))
+        info.update(cuda_utils.get_pci_info(idx, current_only=True))
+        info["throttle_reason"] = cuda_utils.get_throttle_reasons(idx)
 
-        gpu_metrics[f"gpu_{i}"] = {
-            "gpu_percent": gpu_util.gpu,
-            "gpu_memory_total": mem_info.total,
-            "gpu_memory_used": mem_info.used,
-            "gpu_memory_percent": (mem_info.used / mem_info.total) * 100,
-            "power_usage": power_usage,
-            "temperature": temperature,
-            "power_limit": power_limit,
-        }
+        for key in info:
+            if key not in gpu_metrics:
+                gpu_metrics[key] = []
+            gpu_metrics[key].append(info[key])
 
-    return gpu_metrics
+    return {metric: ",".join(map(str, gpu_metrics[metric])) for metric in gpu_metrics}
 
 
-async def log_system_metrics(
+def log_system_metrics(
     output_dir: str,
     pid: int = None,
     interval: int = 5,
     duration: int = None,
+    stop_event=None,
+    metadata: dict = None,
 ):
-    log_data = []
     end_time = (time.time() + duration) if duration is not None else None
     print(
         f"Logging system metrics (pid={pid}) every {interval} seconds for {duration} seconds..."
     )
 
     Path(output_dir).parent.mkdir(exist_ok=True, parents=True)
-    output_file = Path(output_dir, "system_metrics.jsonl")
+    output_file = Path(output_dir, "system_metrics.csv")
 
-    async def write_metrics_to_file(log_data, output_file):
-        with open(output_file, "a") as f:
-            f.write("\n".join(log_data) + "\n")
-
-    devices = get_available_devices()
+    available_devices = get_available_devices()
+    is_gpu_available = "cuda" in available_devices or "gpu" in available_devices
+    if is_gpu_available:
+        pynvml.nvmlInit()
 
     try:
-        while end_time is None or time.time() < end_time:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        while (end_time is None or time.time() < end_time) or (
+            stop_event is None or not stop_event.is_set()
+        ):
+            if isinstance(metadata, dict):
+                metrics = deepcopy(metadata)
+            else:
+                metrics = {}
 
-            cpu_memory_metrics = {}
-            gpu_metrics = {}
-            for device in devices:
-                if device == "cpu":
-                    cpu_memory_metrics = get_cpu_memory_usage(pid) or {}
-                elif device in ["cuda", "gpu"]:
-                    gpu_metrics = get_gpu_usage(pid) or {}
+            metrics["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cpu_usage_info = get_cpu_usage(pid) or {}
+            if not len(cpu_usage_info):
+                break
 
+            metrics.update(cpu_usage_info)
+            if is_gpu_available:
+                metrics.update(get_gpu_usage(pid) or {})
 
-            log_data.append(
-                json.dumps(
-                    {
-                        "timestamp": timestamp,
-                        "cpu_memory_metrics": cpu_memory_metrics,
-                        "gpu_metrics": gpu_metrics,
-                    },
-                    indent=4,
-                )
-            )
+            file_exists = os.path.isfile(output_file)
+            with open(output_file, "a") as fp:
+                fieldnames = list(metrics.keys())
+                writer = csv.DictWriter(fp, fieldnames=fieldnames)
+                if not file_exists:
+                    writer.writeheader()
 
-            if len(log_data) >= 100:
-                await write_metrics_to_file(log_data, output_file)
-                log_data.clear()
+                writer.writerow(metrics)
 
-            await asyncio.sleep(interval)
+            time.sleep(interval)
     except Exception as e:
-        print(f"Monitoring interrupted with exception, {e}")
+        raise RuntimeError(f"Monitoring interrupted with exception, {e}")
     finally:
-        if len(log_data):
-            await write_metrics_to_file(log_data, output_file)
+        if is_gpu_available:
+            pynvml.nvmlShutdown()
 
-        print(f"Metrics logged to {output_file}")
-
-
-if __name__ == "__main__":
-    asyncio.run(log_system_metrics(output_dir="./"))
+    print(f"Metrics logged to {output_file}")

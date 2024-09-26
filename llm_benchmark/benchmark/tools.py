@@ -16,7 +16,7 @@ from llm_benchmark.profiler.record_function_tracer import RecordFunctionTracer
 def get_profiler_result(result_dir: str):
     record_function_tracer = RecordFunctionTracer(result_dir, get_all=True)
     profile_stats = record_function_tracer.get_operation_time_stats()
-    
+
     return profile_stats
 
 
@@ -73,7 +73,7 @@ def create_summary(results, results_dir):
     # filename = re.sub(r"-{2,}", "-", filename)
 
     csv_file_path = os.path.join(
-        results_dir, results[0]["model"].replace("/", "--"), f"summary.csv"
+        results_dir, results[0]["model"].replace("/", "--"), "summary.csv"
     )
     os.makedirs(os.path.dirname(csv_file_path), exist_ok=True)
 

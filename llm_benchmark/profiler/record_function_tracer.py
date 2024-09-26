@@ -48,25 +48,27 @@ class RecordFunctionTracer:
         activities = [torch.profiler.ProfilerActivity.CPU]
         if not self.cpu_only:
             activities.append(torch.profiler.ProfilerActivity.CUDA)
-        
-        schedule = torch.profiler.schedule(
-            wait=1,  # warmup iterations
-            warmup=1,  # profiling iterations
-            active=2,  # iterations to capture
-            repeat=2  # repeat the schedule
-        )
+
+        # schedule = torch.profiler.schedule(
+        #     wait=1,  # warmup iterations
+        #     warmup=1,  # profiling iterations
+        #     active=2,  # iterations to capture
+        #     repeat=2,  # repeat the schedule
+        # )
         self.profiler = torch.profiler.profile(
             activities=activities,
-            schedule=schedule,
+            # schedule=schedule,
             record_shapes=self.profile_memory,
             profile_memory=self.profile_memory,
             with_stack=self.profile_memory,
             with_flops=self.with_flops,
         )
         self.profiler.__enter__()
+        # self.profiler.step()
 
-    def __exit__(self, *args):
-        self.profiler.__exit__(None, None, None)
+    def __exit__(self, exc_type, exc_value, traceback):
+        # self.profiler.step()
+        self.profiler.__exit__(exc_type, exc_value, traceback)
 
         if not self.cpu_only:
             torch.cuda.synchronize()
@@ -337,13 +339,12 @@ class RecordFunctionTracer:
         user_events = {}
         for trace in traces:
             for event in trace:
-                
                 if not ("cat" in event and event["cat"] == "user_annotation"):
                     continue
-                
+
                 if not ("args" in event and "External id" in event["args"]):
                     continue
-                
+
                 ext_id = event["args"]["External id"]
                 if ext_id not in user_events:
                     user_events[ext_id] = event
@@ -354,7 +355,7 @@ class RecordFunctionTracer:
         for event in user_events.values():
             cuda_time = event["dur"]
             name = event["name"].replace("profiler.", "")
-            
+
             if name not in stats:
                 stats[name] = []
 

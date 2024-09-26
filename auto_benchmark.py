@@ -1,8 +1,7 @@
 import os
-import asyncio
 import argparse
 import yaml
-import json
+import threading
 import itertools
 
 from tqdm import tqdm
@@ -36,6 +35,7 @@ def create_config(args):
                 configs.append(config)
     return configs
 
+
 # Function to process and create combinations
 def generate_combinations(config_section):
     fixed_params = {}
@@ -56,16 +56,21 @@ def generate_combinations(config_section):
 
     return fixed_params, array_params, combinations, keys if array_params else []
 
+
 def create_engine_config(engine_config_file):
     with open(engine_config_file, "r") as f:
         engine_config = yaml.safe_load(f)
-    
+
     # Separate the fixed parameters and the parameters with arrays
     # Process the 'args' section
-    fixed_args, array_args, arg_combinations, arg_keys = generate_combinations(engine_config['args'])
+    fixed_args, array_args, arg_combinations, arg_keys = generate_combinations(
+        engine_config["args"]
+    )
 
     # Process the 'envs' section
-    fixed_envs, array_envs, env_combinations, env_keys = generate_combinations(engine_config['envs'])
+    fixed_envs, array_envs, env_combinations, env_keys = generate_combinations(
+        engine_config["envs"]
+    )
 
     # Create a list of configuration dictionaries with all combinations
     configs = []
@@ -73,26 +78,26 @@ def create_engine_config(engine_config_file):
         for env_comb in env_combinations:
             # Create new config dict for each combination
             new_config = {
-                'args': fixed_args.copy(),  # Copy fixed args
-                'envs': fixed_envs.copy()   # Copy fixed envs
+                "args": fixed_args.copy(),  # Copy fixed args
+                "envs": fixed_envs.copy(),  # Copy fixed envs
             }
             # Update with current combination of 'args'
             if arg_comb:
-                new_config['args'].update(dict(zip(arg_keys, arg_comb)))
+                new_config["args"].update(dict(zip(arg_keys, arg_comb)))
 
             # Update with current combination of 'envs'
             if env_comb:
-                new_config['envs'].update(dict(zip(env_keys, env_comb)))
+                new_config["envs"].update(dict(zip(env_keys, env_comb)))
 
             # Append the complete config to the list
             configs.append(new_config)
 
     return configs
 
-async def run_benchmark(args, engine_config=None):
 
+def run_benchmark(args, engine_config=None):
     base_url = f"http://localhost:{args.port}/v1"
-    
+
     if args.engine_config_id:
         engine_config_id = args.engine_config_id
     else:
@@ -101,32 +106,47 @@ async def run_benchmark(args, engine_config=None):
     if args.docker_image:
         container_id = single_node_controller.deploy_model(
             args.docker_image,
-            engine_config['envs'] if engine_config else [],
+            engine_config["envs"] if engine_config else [],
             os.environ["PROFILER_RESULT_DIR"],
-            engine_config['args'] if engine_config else [],
+            engine_config["args"] if engine_config else [],
             engine_config_id,
-            args.port
+            args.port,
         )
     else:
         container_id = None
-    
+
     if args.engine_config_id or container_id:
         engine_tools.create_engine_summary(args.engine, engine_config_id, args.model)
-    
+
     log_metrics_task = None
+    stop_event = None
     results = []
     try:
         configs = create_config(args)
         for config in tqdm(configs, desc="Running benchmarks"):
             print(config)
             run_id = str(uuid.uuid4())[:8]
-            log_metrics_task = asyncio.create_task(
-                hw_monitor.log_system_metrics(
-                    os.path.join(os.environ["PROFILER_RESULT_DIR"], run_id),
-                    pid=None,
-                    interval=3,
-                )
+
+            stop_event = threading.Event()
+            log_metrics_task = threading.Thread(
+                target=hw_monitor.log_system_metrics,
+                kwargs={
+                    "output_dir": os.path.join(
+                        os.environ["PROFILER_RESULT_DIR"], args.model.replace("/", "--")
+                    ),
+                    "pid": single_node_controller.get_container_pid(container_id)
+                    if container_id is not None
+                    else None,
+                    "interval": 3,
+                    "stop_event": stop_event,
+                    "metadata": {
+                        "run_id": run_id,
+                        "engine_config_id": engine_config_id,
+                    },
+                },
             )
+            log_metrics_task.start()
+
             result = benchmark_tools.run_benchmark(
                 args.model,
                 base_url,
@@ -137,7 +157,7 @@ async def run_benchmark(args, engine_config=None):
                 os.environ["PROFILER_RESULT_DIR"],
                 run_id,
             )
-            
+
             result["engine"] = args.engine
             result["engine_config_id"] = args.engine_config_id
             result["run_id"] = run_id
@@ -147,28 +167,38 @@ async def run_benchmark(args, engine_config=None):
 
             results.append(result)
             log_metrics_task.cancel()
+            
+            
+            stop_event.set()
+            log_metrics_task.join()
+            log_metrics_task = None
+            stop_event = None
+            
             benchmark_tools.create_summary([result], os.environ["PROFILER_RESULT_DIR"])
+            print(result)
     except Exception as e:
         print(f"Error during benchmark: {e}")
     finally:
         if container_id:
             single_node_controller.remove_container(container_id)
-        if log_metrics_task is not None:
-            log_metrics_task.cancel()
+        if log_metrics_task is not None and stop_event is not None:
+            stop_event.set()
+            log_metrics_task.join()
 
-    
-async def main(args):
 
+def main(args):
     os.makedirs(os.environ["PROFILER_RESULT_DIR"], exist_ok=True)
 
     if args.engine_config_file:
         engine_configs = create_engine_config(args.engine_config_file)
     else:
-        engine_configs = [None]  # Assuming a default or empty config if file is not provided
-    
+        engine_configs = [
+            None
+        ]  # Assuming a default or empty config if file is not provided
+
     if args.run_benchmark:
         for engine_config in tqdm(engine_configs, desc="Running engine configs"):
-            await run_benchmark(args, engine_config)
+            run_benchmark(args, engine_config)
             break
 
     if args.profile_collectives:
@@ -204,7 +234,7 @@ if __name__ == "__main__":
         default="vllm",
         choices=["vllm", "sglang"],
         help="The engine to be used for the testing.",
-    )   
+    )
     args.add_argument(
         "--engine-config-file",
         type=str,
@@ -270,4 +300,4 @@ if __name__ == "__main__":
     )
     args = args.parse_args()
 
-    asyncio.run(main(args))
+    main(args)

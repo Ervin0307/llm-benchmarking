@@ -5,14 +5,16 @@ import csv
 
 from .config import get_engine_config
 
+
 def get_engine_dir(engine_config_id=None):
     if not engine_config_id:
         engine_config_id = os.environ.get("ENGINE_CONFIG_ID", str(uuid.uuid4())[:8])
     return os.path.join(
-        os.environ.get("PROFILER_RESULT_DIR", "/tmp"), 
+        os.environ.get("PROFILER_RESULT_DIR", "/tmp"),
         "engine",
         engine_config_id,
     )
+
 
 def save_engine_config(args):
     config_dict = {}
@@ -21,8 +23,10 @@ def save_engine_config(args):
     engine_dir = get_engine_dir()
     os.makedirs(engine_dir, exist_ok=True)
     print("Saving engine config to", engine_dir)
-    with open(os.path.join(engine_dir, 'engine_config.json'), 'w') as f:
+    with open(os.path.join(engine_dir, "engine_config.json"), "w") as f:
         json.dump(config_dict, f)
+
+    print(f"Engine config saved to {os.path.join(engine_dir, 'engine_config.json')}")
 
 
 def save_engine_envs(envs):
@@ -31,27 +35,31 @@ def save_engine_envs(envs):
         envs_dict[k] = v()
     engine_dir = get_engine_dir()
     os.makedirs(engine_dir, exist_ok=True)
-    with open(os.path.join(engine_dir, 'engine_envs.json'), 'w') as f:
+    with open(os.path.join(engine_dir, "engine_envs.json"), "w") as f:
         json.dump(envs_dict, f)
+
+    print(f"Engine envs saved to {os.path.join(engine_dir, 'engine_envs.json')}")
 
 
 def create_engine_summary(engine, engine_config_id, model):
     engine_dir = get_engine_dir(engine_config_id)
-    with open(os.path.join(engine_dir, 'engine_config.json'), 'r') as f:
+    with open(os.path.join(engine_dir, "engine_config.json"), "r") as f:
         config = json.load(f)
-    with open(os.path.join(engine_dir, 'engine_envs.json'), 'r') as f:
+    with open(os.path.join(engine_dir, "engine_envs.json"), "r") as f:
         envs = json.load(f)
-    
+
     engine_config = get_engine_config(engine, config, envs)
     engine_config = {
         "engine_config_id": engine_config_id,
         **engine_config.get_config(),
     }
-    
 
     results_dir = os.environ.get("PROFILER_RESULT_DIR", "/tmp")
     csv_file_path = os.path.join(
-        results_dir,model.replace("/", "--"), 'engine', f"engine_{engine_config_id}.csv"
+        results_dir,
+        model.replace("/", "--"),
+        "engine",
+        f"engine_{engine_config_id}.csv",
     )
     os.makedirs(os.path.dirname(csv_file_path), exist_ok=True)
 
