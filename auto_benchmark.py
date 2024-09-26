@@ -115,8 +115,8 @@ def run_benchmark(args, engine_config=None):
     else:
         container_id = None
 
-    # if args.engine_config_id or container_id:
-    #     engine_tools.create_engine_summary(args.engine, engine_config_id, args.model)
+    if args.engine_config_id or container_id:
+        engine_tools.create_engine_summary(args.engine, engine_config_id, args.model)
 
     log_metrics_task = None
     stop_event = None
