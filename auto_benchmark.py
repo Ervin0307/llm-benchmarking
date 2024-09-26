@@ -147,7 +147,7 @@ async def run_benchmark(args, engine_config=None):
 
             results.append(result)
             log_metrics_task.cancel()
-            print(result)
+            benchmark_tools.create_summary([result], os.environ["PROFILER_RESULT_DIR"])
     except Exception as e:
         print(f"Error during benchmark: {e}")
     finally:
@@ -155,8 +155,6 @@ async def run_benchmark(args, engine_config=None):
             single_node_controller.remove_container(container_id)
         if log_metrics_task is not None:
             log_metrics_task.cancel()
-
-    benchmark_tools.create_summary(results, os.environ["PROFILER_RESULT_DIR"])
 
     
 async def main(args):
