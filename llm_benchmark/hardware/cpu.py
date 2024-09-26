@@ -146,18 +146,13 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
 def get_temp_and_power_info(current_only: bool = False):
     temps = psutil.sensors_temperatures()
     core_temp = temps.get("coretemp", [])
-    avg_temp_current = sum(int(temp.current) for temp in core_temp) / max(
-        1, len(core_temp)
-    )
 
-    tp_info = {"cpu_temp_current": avg_temp_current}
-
-    if current_only:
-        return tp_info
-
-    tp_info["cpu_temp_high"] = sum(int(temp.high) for temp in core_temp) / max(
-        1, len(core_temp)
-    )
+    tp_info = {
+        "cpu_temp_current": sum(int(temp.current) for temp in core_temp)
+        / max(1, len(core_temp)),
+        "cpu_temp_high": sum(int(temp.high) for temp in core_temp)
+        / max(1, len(core_temp)),
+    }
 
     return tp_info
 

@@ -58,7 +58,7 @@ def log_system_metrics(
         pynvml.nvmlInit()
 
     try:
-        while (end_time is None or time.time() < end_time) or (
+        while (end_time is None or time.time() < end_time) and (
             stop_event is None or not stop_event.is_set()
         ):
             if isinstance(metadata, dict):
