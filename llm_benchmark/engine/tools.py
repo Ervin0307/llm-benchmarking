@@ -24,7 +24,7 @@ def save_engine_config(args):
     os.makedirs(engine_dir, exist_ok=True)
     print("Saving engine config to", engine_dir)
     with open(os.path.join(engine_dir, "engine_config.json"), "w") as f:
-        json.dump(config_dict, f)
+        json.dump(config_dict, f, indent=4)
 
     print(f"Engine config saved to {os.path.join(engine_dir, 'engine_config.json')}")
 
@@ -36,7 +36,7 @@ def save_engine_envs(envs):
     engine_dir = get_engine_dir()
     os.makedirs(engine_dir, exist_ok=True)
     with open(os.path.join(engine_dir, "engine_envs.json"), "w") as f:
-        json.dump(envs_dict, f)
+        json.dump(envs_dict, f, indent=4)
 
     print(f"Engine envs saved to {os.path.join(engine_dir, 'engine_envs.json')}")
 

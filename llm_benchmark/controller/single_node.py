@@ -146,8 +146,8 @@ def get_container_pid(container_id: str):
             text=True,
             check=True,
         )
-        pid = int(output.stdout.strip())
-        print(f"Container {pid} removed.")
+        pid = output.stdout.strip().strip("'").strip('"')
+        print(f"Container PID is {pid}.")
     except subprocess.CalledProcessError as e:
         print(f"Failed to get container {container_id} pid. Docker error: {e.stderr}")
     finally:

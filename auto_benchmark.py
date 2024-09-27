@@ -166,8 +166,6 @@ def run_benchmark(args, engine_config=None):
             result["concurrency"] = config["concurrency"]
 
             results.append(result)
-            log_metrics_task.cancel()
-            
             
             stop_event.set()
             log_metrics_task.join()
