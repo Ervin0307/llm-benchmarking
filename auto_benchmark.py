@@ -111,6 +111,7 @@ def run_benchmark(args, engine_config=None):
             engine_config["args"] if engine_config else [],
             engine_config_id,
             args.port,
+            cpu_only=args.cpu_only,
         )
     else:
         container_id = None
@@ -159,19 +160,19 @@ def run_benchmark(args, engine_config=None):
             )
 
             result["engine"] = args.engine
-            result["engine_config_id"] = args.engine_config_id
+            result["engine_config_id"] = engine_config_id
             result["run_id"] = run_id
             result["input_tokens"] = config["input_tokens"]
             result["output_tokens"] = config["output_tokens"]
             result["concurrency"] = config["concurrency"]
 
             results.append(result)
-            
+
             stop_event.set()
             log_metrics_task.join()
             log_metrics_task = None
             stop_event = None
-            
+
             benchmark_tools.create_summary([result], os.environ["PROFILER_RESULT_DIR"])
             print(result)
     except Exception as e:

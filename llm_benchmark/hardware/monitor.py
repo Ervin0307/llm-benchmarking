@@ -1,7 +1,6 @@
 import os
 import csv
 import time
-import pynvml
 from pathlib import Path
 from copy import deepcopy
 from datetime import datetime
@@ -56,6 +55,7 @@ def log_system_metrics(
     available_devices = get_available_devices()
     is_gpu_available = "cuda" in available_devices or "gpu" in available_devices
     if is_gpu_available:
+        import pynvml
         pynvml.nvmlInit()
 
     try:

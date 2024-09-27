@@ -1,5 +1,4 @@
 import re
-import pynvml
 import subprocess
 
 
@@ -425,6 +424,7 @@ def get_memory_info(device_id):
 
 
 def get_gpu_info():
+    import pynvml
     pynvml.nvmlInit()
 
     smi_output = filter_nvidia_smi()

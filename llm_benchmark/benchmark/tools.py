@@ -27,8 +27,8 @@ def create_summary(results, results_dir):
     for result in results:
         summary = {}
         summary["Engine"] = result["engine"]
-        summary["Engine Config ID"] = result["engine_config_id"]
-        summary["Run ID"] = result["run_id"]
+        summary["engine_config_id"] = result["engine_config_id"]
+        summary["run_id"] = result["run_id"]
         summary["Model"] = result["model"]
         summary["Mean Input Tokens"] = result["input_tokens"]
         summary["Mean Output Tokens"] = result["output_tokens"]
