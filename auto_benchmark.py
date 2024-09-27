@@ -198,7 +198,7 @@ def main(args):
     if args.run_benchmark:
         for engine_config in tqdm(engine_configs, desc="Running engine configs"):
             run_benchmark(args, engine_config)
-            break
+            # break
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(
