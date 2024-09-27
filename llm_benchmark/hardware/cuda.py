@@ -1,6 +1,11 @@
 import re
 import subprocess
 
+try:
+    import pynvml
+except ImportError:
+    print("Failed to import pynvml, the system doesn't support cuda")
+
 
 def filter_nvidia_smi(filters: list = None):
     result = subprocess.run(
@@ -424,7 +429,6 @@ def get_memory_info(device_id):
 
 
 def get_gpu_info():
-    import pynvml
     pynvml.nvmlInit()
 
     smi_output = filter_nvidia_smi()

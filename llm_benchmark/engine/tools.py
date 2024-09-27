@@ -71,7 +71,8 @@ def create_engine_summary(engine, engine_config_id, model):
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
         # Always write headers
-        writer.writeheader()
+        if not file_exists:
+            writer.writeheader()
 
         # Write the summary data
         writer.writerow(engine_config)

@@ -35,6 +35,18 @@ def create_config(args):
                 configs.append(config)
     return configs
 
+def warmup_benchmark(model, base_url, benchmark_script):
+    print("Running warmup benchmark")
+    result = benchmark_tools.run_benchmark(
+        args.model,
+        base_url,
+        250,
+        250,
+        10,
+        benchmark_script,
+        os.environ["PROFILER_RESULT_DIR"],
+        "warmup",
+    )
 
 # Function to process and create combinations
 def generate_combinations(config_section):
@@ -118,6 +130,8 @@ def run_benchmark(args, engine_config=None):
 
     if args.engine_config_id or container_id:
         engine_tools.create_engine_summary(args.engine, engine_config_id, args.model)
+    
+    warmup_benchmark(args.model, base_url, args.benchmark_script)
 
     log_metrics_task = None
     stop_event = None
@@ -198,7 +212,6 @@ def main(args):
     if args.run_benchmark:
         for engine_config in tqdm(engine_configs, desc="Running engine configs"):
             run_benchmark(args, engine_config)
-            break
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(
