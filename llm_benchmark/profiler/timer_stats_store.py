@@ -11,7 +11,7 @@ class TimerStatsStore(metaclass=Singleton):
         self.TIMING_STATS = {}
 
     def record_time(self, name: str, time):
-        name = name.replace("vidur_", "")
+        name = name.replace("profiler.", "")
         if name not in self.TIMING_STATS:
             self.TIMING_STATS[name] = []
 

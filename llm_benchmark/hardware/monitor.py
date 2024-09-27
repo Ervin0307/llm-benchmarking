@@ -43,6 +43,7 @@ def log_system_metrics(
     stop_event=None,
     metadata: dict = None,
 ):
+    pid = int(pid) if isinstance(pid, str) else pid
     end_time = (time.time() + duration) if duration is not None else None
     print(
         f"Logging system metrics (pid={pid}) every {interval} seconds for {duration} seconds..."

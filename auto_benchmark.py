@@ -181,12 +181,12 @@ def run_benchmark(args, engine_config=None):
             result["concurrency"] = config["concurrency"]
 
             results.append(result)
-                        
+
             stop_event.set()
             log_metrics_task.join()
             log_metrics_task = None
             stop_event = None
-            
+
             benchmark_tools.create_summary([result], os.environ["PROFILER_RESULT_DIR"])
             print(result)
     except Exception as e:
@@ -212,6 +212,7 @@ def main(args):
     if args.run_benchmark:
         for engine_config in tqdm(engine_configs, desc="Running engine configs"):
             run_benchmark(args, engine_config)
+            # break
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(

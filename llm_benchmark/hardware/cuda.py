@@ -454,6 +454,7 @@ def get_gpu_info():
 
             gpu_info.append(
                 {
+                    "device_id": device_id,
                     "product_name": pynvml.nvmlDeviceGetName(handle).decode("utf-8"),
                     "product_brand": pynvml.nvmlDeviceGetBrand(handle),
                     "architecture": extract_value(
