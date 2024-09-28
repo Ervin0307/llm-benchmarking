@@ -15,11 +15,11 @@ from llm_benchmark.hardware import monitor as hw_monitor
 from llm_benchmark.engine import tools as engine_tools
 
 
-def create_config(args):
+def create_config(run_config):
     configs = []
-    input_tokens = [int(x) for x in args.input_tokens.split(",")]
-    output_tokens = [int(x) for x in args.output_tokens.split(",")]
-    concurrencies = [int(x) for x in args.concurrency.split(",")]
+    input_tokens = [int(x) for x in run_config['mean_input_tokens']] if isinstance(run_config['mean_input_tokens'], list) else [run_config['mean_input_tokens']]
+    output_tokens = [int(x) for x in run_config['mean_output_tokens']] if isinstance(run_config['mean_output_tokens'], list) else [run_config['mean_output_tokens']]
+    concurrencies = [int(x) for x in run_config['num_concurrent_requests']] if isinstance(run_config['num_concurrent_requests'], list) else [run_config['num_concurrent_requests']]
 
     for input_token in input_tokens:
         if input_token < 20:
@@ -38,7 +38,7 @@ def create_config(args):
 def warmup_benchmark(model, base_url, benchmark_script):
     print("Running warmup benchmark")
     result = benchmark_tools.run_benchmark(
-        args.model,
+        model,
         base_url,
         250,
         250,
@@ -103,18 +103,20 @@ def create_engine_config(engine_config_file):
 
             # Append the complete config to the list
             configs.append(new_config)
+    
+    return configs, engine_config['run_config']
 
-    return configs
 
-
-def run_benchmark(args, engine_config=None):
+def run_benchmark(args, engine_config, run_config):
     base_url = f"http://localhost:{args.port}/v1"
+    model = engine_config["args"]['model']
 
     if args.engine_config_id:
         engine_config_id = args.engine_config_id
     else:
         engine_config_id = str(uuid.uuid4())[:8]
 
+    
     if args.docker_image:
         container_id = single_node_controller.deploy_model(
             args.docker_image,
@@ -124,20 +126,21 @@ def run_benchmark(args, engine_config=None):
             engine_config_id,
             args.port,
             cpu_only=args.cpu_only,
+            profile_model=args.profile_model,
         )
     else:
         container_id = None
 
     if args.engine_config_id or container_id:
-        engine_tools.create_engine_summary(args.engine, engine_config_id, args.model)
+        engine_tools.create_engine_summary(args.engine, engine_config_id, model)
     
-    warmup_benchmark(args.model, base_url, args.benchmark_script)
+    warmup_benchmark(model, base_url, args.benchmark_script)
 
     log_metrics_task = None
     stop_event = None
     results = []
     try:
-        configs = create_config(args)
+        configs = create_config(run_config)
         for config in tqdm(configs, desc="Running benchmarks"):
             print(config)
             run_id = str(uuid.uuid4())[:8]
@@ -147,7 +150,7 @@ def run_benchmark(args, engine_config=None):
                 target=hw_monitor.log_system_metrics,
                 kwargs={
                     "output_dir": os.path.join(
-                        os.environ["PROFILER_RESULT_DIR"], args.model.replace("/", "--")
+                        os.environ["PROFILER_RESULT_DIR"], model.replace("/", "--")
                     ),
                     "pid": single_node_controller.get_container_pid(container_id)
                     if container_id is not None
@@ -163,7 +166,7 @@ def run_benchmark(args, engine_config=None):
             log_metrics_task.start()
 
             result = benchmark_tools.run_benchmark(
-                args.model,
+                model,
                 base_url,
                 config["input_tokens"],
                 config["output_tokens"],
@@ -203,15 +206,13 @@ def main(args):
     os.makedirs(os.environ["PROFILER_RESULT_DIR"], exist_ok=True)
 
     if args.engine_config_file:
-        engine_configs = create_engine_config(args.engine_config_file)
+        engine_configs, run_config = create_engine_config(args.engine_config_file)
     else:
-        engine_configs = [
-            None
-        ]  # Assuming a default or empty config if file is not provided
+       raise ValueError("Engine config file is required")
 
     if args.run_benchmark:
         for engine_config in tqdm(engine_configs, desc="Running engine configs"):
-            run_benchmark(args, engine_config)
+            run_benchmark(args, engine_config, run_config)
             # break
 
     if args.profile_collectives:
@@ -233,9 +234,6 @@ if __name__ == "__main__":
     )
 
     args.add_argument(
-        "--model", type=str, required=True, help="The model to use for this load test."
-    )
-    args.add_argument(
         "--docker-image",
         type=str,
         default=None,
@@ -251,7 +249,7 @@ if __name__ == "__main__":
     args.add_argument(
         "--engine-config-file",
         type=str,
-        default=None,
+        required=True,
         help="The engine config file to be used for the testing.",
     )
     args.add_argument(
@@ -270,24 +268,6 @@ if __name__ == "__main__":
         "--run-benchmark",
         action="store_true",
         help="Whether to run the benchmark.",
-    )
-    args.add_argument(
-        "--input-tokens",
-        type=str,
-        default="128,256,512,1024",
-        help="List of different input token combinations",
-    )
-    args.add_argument(
-        "--output-tokens",
-        type=str,
-        default="128,256,512,1024",
-        help="List of different output token combinations",
-    )
-    args.add_argument(
-        "--concurrency",
-        type=str,
-        default="1,10,20,30,50,100",
-        help="List of concurrency for the benchmark",
     )
     args.add_argument(
         "--benchmark-script",
@@ -310,6 +290,11 @@ if __name__ == "__main__":
         "--profile-hardware",
         action="store_true",
         help="Whether to profile the hardware.",
+    )
+    args.add_argument(
+        "--profile-model",
+        action="store_true",
+        help="Whether to profile the model.",
     )
     args = args.parse_args()
 

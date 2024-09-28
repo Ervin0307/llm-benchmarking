@@ -11,12 +11,15 @@ def build_docker_run_command(
     extra_args: list,
     engine_config_id: str,
     cpu_only: bool = False,
+    profile_model: bool = False,
 ) -> list:
     """Constructs the docker run command."""
 
     env_vars = [f"-e {k}='{v}'" for k, v in env_values.items()] if env_values else []
     env_vars.append(f"-e ENGINE_CONFIG_ID={engine_config_id}")
     env_vars.append("-e PROFILER_RESULT_DIR=/root/results/")
+    if profile_model:
+        env_vars.append("-e ENABLE_PROFILER=True")
 
     arg_vars = [f"--{k}={v}" for k, v in extra_args.items()] if extra_args else []
 
@@ -57,12 +60,13 @@ def deploy_model(
     extra_args: list,
     engine_config_id: str,
     port: int,
-    warmup_sec: int = 60,
+    warmup_sec: int = 30,
     cpu_only: bool = False,
+    profile_model: bool = False,
 ) -> str:
     try:
         docker_command = build_docker_run_command(
-            docker_image, env_values, result_dir, extra_args, engine_config_id, cpu_only
+            docker_image, env_values, result_dir, extra_args, engine_config_id, cpu_only, profile_model
         )
         print(f"Deploying with Docker image {docker_image}...")
         print("Executing Docker command: " + " ".join(docker_command))

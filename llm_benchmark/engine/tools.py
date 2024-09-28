@@ -66,7 +66,7 @@ def create_engine_summary(engine, engine_config_id, model):
     file_exists = os.path.isfile(csv_file_path)
 
     # Open the CSV file in write mode to ensure headers are always written
-    with open(csv_file_path, "w", newline="") as csvfile:
+    with open(csv_file_path, "a", newline="") as csvfile:
         fieldnames = list(engine_config.keys())
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 

@@ -61,7 +61,7 @@ def get_config_from_vllm(config: dict, envs: dict):
         distributed_backend=config.get("distributed_executor_backend", "mp"),
         gpu_memory_utilization=config.get("gpu_memory_utilization"),
         swap_space=config.get("swap_space"),
-        cpu_kv_cache_size=envs.get("VLLM_CPU_KVCACHE_SPACE"),
+        cpu_kv_cache_size=envs.get("VLLM_CPU_KVCACHE_SPACE", 4),
         block_size=config.get("block_size"),
         max_num_batched_tokens=config.get("max_num_batched_tokens"),
         max_num_seqs=config.get("max_num_seqs"),
