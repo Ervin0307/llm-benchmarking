@@ -1,7 +1,7 @@
 # H/w
 psutil
-pycuda
-nvidia-ml-py3
+# pycuda
+# nvidia-ml-py3
 
 # Benchamrk & Profiling
 torch
