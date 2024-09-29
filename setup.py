@@ -9,6 +9,6 @@ setup(
     keywords="bud",
     name="llm_benchmark",
     packages=find_packages(include=["llm_benchmark", "llm_benchmark.*"]),
-    install_requires="requirements.txt",
+    install_requires=open("requirements.txt").read().splitlines(),
     version="0.0.2",
 )
