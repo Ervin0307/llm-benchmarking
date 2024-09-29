@@ -205,19 +205,19 @@ def run_benchmark(args, engine_config, run_config):
 def main(args):
     os.makedirs(os.environ["PROFILER_RESULT_DIR"], exist_ok=True)
 
-    if args.engine_config_file:
-        engine_configs, run_config = create_engine_config(args.engine_config_file)
-    else:
-       raise ValueError("Engine config file is required")
-
     if args.run_benchmark:
+        if args.engine_config_file:
+            engine_configs, run_config = create_engine_config(args.engine_config_file)
+        else:
+            raise ValueError("Engine config file is required")
+    
         for engine_config in tqdm(engine_configs, desc="Running engine configs"):
             run_benchmark(args, engine_config, run_config)
             # break
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(
-            max_collective_size=512 * 1024,
+            max_collective_size=4096 * 8192,
             output_dir=os.environ["PROFILER_RESULT_DIR"],
         )
 
@@ -249,7 +249,7 @@ if __name__ == "__main__":
     args.add_argument(
         "--engine-config-file",
         type=str,
-        required=True,
+        default=None,
         help="The engine config file to be used for the testing.",
     )
     args.add_argument(

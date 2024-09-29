@@ -10,3 +10,5 @@ git+https://github.com/ray-project/llmperf.git
 
 # Other
 tqdm
+pyyaml
+numpy
