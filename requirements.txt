@@ -6,7 +6,7 @@ nvidia-ml-py3
 # Benchamrk & Profiling
 torch
 requests
-"git+https://github.com/ray-project/llmperf.git#egg=llmperf"
+llmperf @ git+https://github.com/ray-project/llmperf.git
 
 # Other
 tqdm
