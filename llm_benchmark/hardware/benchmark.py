@@ -5,10 +5,10 @@ from torch import mps, cuda
 
 num_trails = 10
 
-
 def flops_benchmark(device):
-    test_range = 2 ** np.arange(8, 16, 1)
-
+    torch.set_num_threads(torch.get_num_threads())
+    test_range = 2 ** np.arange(13, 17, 1)
+    print(test_range)
     print("size, elapsed_time, flops")
     for n in test_range:
         total = 0
