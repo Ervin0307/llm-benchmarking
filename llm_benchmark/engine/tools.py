@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import csv
+import inspect
 
 from .config import get_engine_config
 
@@ -20,6 +21,8 @@ def save_engine_config(args):
     config_dict = {}
     for item in vars(args):
         config_dict[item] = getattr(args, item)
+        if callable(config_dict[item]):
+            config_dict[item] = str(config_dict[item])
     engine_dir = get_engine_dir()
     os.makedirs(engine_dir, exist_ok=True)
     print("Saving engine config to", engine_dir)
@@ -58,7 +61,7 @@ def create_engine_summary(engine, engine_config_id, model):
     csv_file_path = os.path.join(
         results_dir,
         model.replace("/", "--"),
-        f"engine_config.csv",
+        "engine_config.csv",
     )
     os.makedirs(os.path.dirname(csv_file_path), exist_ok=True)
 

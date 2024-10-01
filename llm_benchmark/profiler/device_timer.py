@@ -29,6 +29,7 @@ class DeviceTimer:
         self,
         name,
         layer_id: int = 0,  # we don't care about layer id, it is just for compatibility with sarathi cudatimer
+        profile_method: ProfileMethod = "record_function",
         aggregation_fn=sum,
         filter_str=None,
         cpu_only: bool = False,
@@ -41,7 +42,7 @@ class DeviceTimer:
         else:
             self.name = None
 
-        self.timer_stats_store = TimerStatsStore(profile_method="record_function")
+        self.timer_stats_store = TimerStatsStore(profile_method=profile_method)
         self.is_disabled = (name is None) or self.timer_stats_store.disabled
 
         if self.is_disabled:
@@ -50,7 +51,7 @@ class DeviceTimer:
         self.aggregation_fn = aggregation_fn
         self.filter_str = filter_str
 
-        activities = [torch.profiler.ProfilerActivity.CPU] 
+        activities = [torch.profiler.ProfilerActivity.CPU]
         if not cpu_only:
             activities.append(torch.profiler.ProfilerActivity.CUDA)
 
@@ -141,7 +142,12 @@ class DeviceTimer:
         if self.filter_str:
             events = [e for e in events if e.name.startswith(self.filter_str)]
 
-        total_cuda_time = self.aggregation_fn([e.device_time_total if not self.cpu_only else e.cpu_time_total for e in events])
+        total_cuda_time = self.aggregation_fn(
+            [
+                e.device_time_total if not self.cpu_only else e.cpu_time_total
+                for e in events
+            ]
+        )
         self.timer_stats_store.record_time(
             self.name, total_cuda_time * 1e-3
         )  # convert to ms

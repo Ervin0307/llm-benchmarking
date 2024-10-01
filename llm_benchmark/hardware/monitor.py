@@ -5,6 +5,13 @@ from pathlib import Path
 from copy import deepcopy
 from datetime import datetime
 
+try:
+    import pynvml
+except ImportError:
+    print(
+        "pynvml import failed, the system either don't have cuda support or is not configured properly."
+    )
+
 from . import cuda as cuda_utils
 from . import cpu as cpu_utils
 from llm_benchmark.utils.device_utils import get_available_devices
@@ -55,7 +62,6 @@ def log_system_metrics(
     available_devices = get_available_devices()
     is_gpu_available = "cuda" in available_devices or "gpu" in available_devices
     if is_gpu_available:
-        import pynvml
         pynvml.nvmlInit()
 
     try:

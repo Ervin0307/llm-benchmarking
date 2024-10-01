@@ -24,7 +24,7 @@ class TimerStatsStore(metaclass=Singleton):
         stats = {}
         for name, times in self.TIMING_STATS.items():
             times = [
-                (time if isinstance(time, float) else time[0].elapsed_time(time[1]))
+                (time if isinstance(time, (float, int)) else time[0].elapsed_time(time[1]))
                 for time in times
             ]
 

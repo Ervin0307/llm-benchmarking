@@ -54,7 +54,7 @@ class VllmProfileLayer(ProfileLayerBase, Enum):
     ATTN_OUTPUT_RESHAPE = ("attn_backend.attn_output_reshape",)
 
     # Attention Layers
-    EMBED = ("model.embed_tokens",)
+    EMB = ("model.embed_tokens",)
     INPUT_LAYERNORM = ("layers.\d.input_layernorm",)
     ATTN_PRE_PROJ = ("self_attn.qkv_proj",)
     ATTN_ROPE = ("self_attn.rotary_emb",)
@@ -65,4 +65,4 @@ class VllmProfileLayer(ProfileLayerBase, Enum):
     MLP_UP_PROJ = ("mlp.gate_up_proj", "mlp.up_proj")
     MLP_ACT = ("mlp.act_fn",)
     MLP_DOWN_PROJ = ("mlp.down_proj",)
-    MLP_ADD = ("decoder.add",)
+    ADD = ("decoder.add",)

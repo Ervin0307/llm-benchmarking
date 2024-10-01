@@ -16,7 +16,6 @@ from llm_benchmark.profiler.record_function_tracer import RecordFunctionTracer
 def get_profiler_result(result_dir: str):
     record_function_tracer = RecordFunctionTracer(result_dir, get_all=True)
     profile_stats = record_function_tracer.get_operation_time_stats()
-
     return profile_stats
 
 
@@ -53,13 +52,15 @@ def create_summary(results, results_dir):
         summary["P95 Inter Token Latency (ms)"] = round(result["p95_itl_ms"], 2)
 
         for layer in layers:
-            summary[f"{layer}_min"] = result[layer]["min"] if layer in result else ""
-            summary[f"{layer}_max"] = result[layer]["max"] if layer in result else ""
-            summary[f"{layer}_mean"] = result[layer]["mean"] if layer in result else ""
-            summary[f"{layer}_median"] = (
-                result[layer]["median"] if layer in result else ""
-            )
-            summary[f"{layer}_std"] = result[layer]["std"] if layer in result else ""
+            for prefix in ("cpu.", "cuda."):
+                name = prefix + layer
+                summary[f"{name}_min"] = result[name]["min"] if name in result else ""
+                summary[f"{name}_max"] = result[name]["max"] if name in result else ""
+                summary[f"{name}_mean"] = result[name]["mean"] if name in result else ""
+                summary[f"{name}_median"] = (
+                    result[name]["median"] if name in result else ""
+                )
+                summary[f"{name}_std"] = result[name]["std"] if name in result else ""
 
         summary_list.append(summary)
 

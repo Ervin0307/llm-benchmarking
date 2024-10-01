@@ -339,7 +339,10 @@ class RecordFunctionTracer:
         user_events = {}
         for trace in traces:
             for event in trace:
-                if not ("cat" in event and event["cat"] == "user_annotation"):
+                if not (
+                    "cat" in event
+                    and event["cat"] in ("user_annotation", "gpu_user_annotation")
+                ):
                     continue
 
                 if not ("args" in event and "External id" in event["args"]):
@@ -347,19 +350,28 @@ class RecordFunctionTracer:
 
                 ext_id = event["args"]["External id"]
                 if ext_id not in user_events:
-                    user_events[ext_id] = event
+                    user_events[ext_id] = {event["cat"]: event}
+                elif event["cat"] not in user_events[ext_id]:
+                    user_events[ext_id][event["cat"]] = event
                 else:
-                    if event["dur"] > user_events[ext_id]["dur"]:
-                        user_events[ext_id] = event
+                    if event["dur"] > user_events[ext_id][event["cat"]]["dur"]:
+                        user_events[ext_id][event["cat"]] = event
 
         for event in user_events.values():
-            cuda_time = event["dur"]
-            name = event["name"].replace("profiler.", "")
+            for cat, prefix in {
+                "user_annotation": "cpu",
+                "gpu_user_annotation": "cuda",
+            }.items():
+                if cat not in event:
+                    continue
 
-            if name not in stats:
-                stats[name] = []
+                device_time = event[cat]["dur"]
+                name = f"{prefix}." + event[cat]["name"].replace("profiler.", "")
 
-            stats[name].append(cuda_time * 1e-3)  # to convert to ms
+                if name not in stats:
+                    stats[name] = []
+
+                stats[name].append(device_time * 1e-3)  # to convert to ms
 
         return {
             operation: {
