@@ -20,15 +20,15 @@ from functools import total_ordering
 from pprint import pformat
 from typing import Union
 
-import fire
+import csv
 
-from .config import (DtypeConfig, GPUConfig, ModelConfig,
-                                 ParallelismConfig, get_dtype_config_by_name,
-                                 get_gpu_config_by_name,
-                                 get_model_config_by_name)
-from .constant import *
-from ..utils.logger import logger
-from .utils import _latency_to_string, _num_to_string, within_range
+from llm_benchmark.utils.logger import logger
+from llm_benchmark.model.config import (DtypeConfig, GPUConfig, ModelConfig,
+                    ParallelismConfig, get_dtype_config_by_name,
+                    get_gpu_config_by_name,
+                    get_model_config_by_name)
+from llm_benchmark.model.constant import *
+from llm_benchmark.model.utils import _latency_to_string, _num_to_string, within_range
 
 
 @total_ordering
@@ -1511,13 +1511,15 @@ class LLMAnalysis:
         self,
         summary_dict: dict,
         output_dir: str,
-        print_human_readable: bool = True,
+        print_human_readable: bool = False,
         output_file_prefix: str = "",
         output_file_suffix: str = "",
     ):
-        file_name = output_file_prefix + self.get_configs_desc(
-        ) + output_file_suffix + "-summary.json"
-
+        # file_name = output_file_prefix + self.get_configs_desc(
+        # ) + output_file_suffix + "-summary.json"
+        
+        output_dir = os.path.join(output_dir, self.model_config.name.replace("/", "--"))
+        file_name = os.path.join(output_dir, 'model_analysis.csv')
         if not os.path.exists(output_dir):
             try:
                 os.makedirs(output_dir, exist_ok=True)
@@ -1526,8 +1528,22 @@ class LLMAnalysis:
                 logger.error(f"Failed to create output_dir {output_dir}")
                 exit()
         assert os.path.isdir(output_dir), f"{output_dir} is not a directory"
-        with open(os.path.join(output_dir, file_name), "w") as f:
-            json.dump(summary_dict, f, indent=4)
+        
+        # Check if the file exists to determine if we need to write headers
+        file_exists = os.path.isfile(os.path.join(output_dir, file_name))
+
+        # Open the CSV file in append mode
+        with open(file_name, "a", newline="") as csvfile:
+            fieldnames = list(summary_dict.keys())
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+            # Write headers if the file is newly created
+            if not file_exists:
+                writer.writeheader()
+
+            # Write the summary data
+            writer.writerow(summary_dict)
+        
         logger.info(
             f"Summary written to {os.path.join(output_dir, file_name)}")
         if print_human_readable:
@@ -1553,6 +1569,7 @@ class LLMAnalysis:
         output_dir: str = None,
         output_file_prefix: str = "",
         output_file_suffix: str = "",
+        run_id: str = None,
     ) -> dict:
         """Inference analysis given the configs and inputs.
 
@@ -1780,12 +1797,13 @@ class LLMAnalysis:
         total_tokens_per_sec = batch_size_per_gpu / total_per_token_latency
 
         summary_dict = {
-            "batch_size_per_gpu": batch_size_per_gpu,
-            "seq_len": seq_len,
+            # "batch_size_per_gpu": batch_size_per_gpu,
+            # "seq_len": seq_len,
+            "run_id": run_id,
             "tp_size": self.parallelism_config.tp_size,
             "ep_size": self.parallelism_config.ep_size,
             "pp_size": self.parallelism_config.pp_size,
-            "num_tokens_to_generate": num_tokens_to_generate,
+            # "num_tokens_to_generate": num_tokens_to_generate,
             "num_params_total": self.total_num_params,
             "num_params_total_mlp": self.total_num_params_mlp,
             "num_params_total_embedding": self.total_num_params_embedding,
@@ -1858,7 +1876,7 @@ class LLMAnalysis:
         if output_dir is not None:
             self.output_summary_dict(summary_dict,
                                      output_dir,
-                                     print_human_readable=True,
+                                     print_human_readable=False,
                                      output_file_prefix=output_file_prefix,
                                      output_file_suffix=output_file_suffix)
 
@@ -2501,6 +2519,7 @@ class LLMAnalysis:
 def infer(
     model_name="facebook_opt-1.3b",
     gpu_name="a100-sxm-40gb",
+    device_config=None,
     dtype_name="w16a16e16",
     log_level="INFO",
     batch_size_per_gpu=1,
@@ -2524,6 +2543,7 @@ def infer(
     output_dir: str = None,
     output_file_prefix: str = "",
     output_file_suffix: str = "",
+    run_id: str = None,
 ) -> dict:
     """_summary_
 
@@ -2559,8 +2579,17 @@ def infer(
     """
 
     model_config = get_model_config_by_name(model_name)
-    gpu_config = get_gpu_config_by_name(gpu_name)
-    dtype_config = get_dtype_config_by_name(dtype_name)
+    if device_config is None:
+        gpu_config = get_gpu_config_by_name(gpu_name)
+    else:
+        gpu_config = GPUConfig(**device_config)
+    # dtype_config = get_dtype_config_by_name(dtype_name)
+    dtype_config = DtypeConfig(
+        name="w16a16e16",
+        weight_bits=16,
+        activation_bits=16,
+        embedding_bits=16
+    )
     parallel_config = ParallelismConfig(
         tp_size=tp_size,
         pp_size=pp_size,
@@ -2599,6 +2628,7 @@ def infer(
         output_dir=output_dir,
         output_file_prefix=output_file_prefix,
         output_file_suffix=output_file_suffix,
+        run_id=run_id
     )
 
     return summary_dict
@@ -2774,4 +2804,5 @@ def train(
 
 
 if __name__ == "__main__":
-    fire.Fire(serialize=lambda x: json.dumps(x, indent=4))
+    
+    infer(model_name="meta-llama/Meta-Llama-3-8B-Instruct", output_dir=".", batch_size_per_gpu=50)

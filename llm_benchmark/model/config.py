@@ -21,9 +21,9 @@ from pathlib import Path
 
 import fire
 
-from .constant import (DTYPE_CONFIG_DIR_NAME, GPU_CONFIG_DIR_NAME,
+from llm_benchmark.model.constant import (DTYPE_CONFIG_DIR_NAME, GPU_CONFIG_DIR_NAME,
                                    MODEL_CONFIG_DIR_NAME)
-from ..utils.logger import logger
+from llm_benchmark.utils.logger import logger
 
 try:
     from transformers import AutoConfig
@@ -136,7 +136,7 @@ dtype_configs = {}
 
 
 def canonical_model_name(name: str) -> str:
-    return name.replace("/", "_")
+    return name.replace("/", "--")
 
 
 def dump_configs(configs: dict, config_dir_name: str) -> None:
@@ -217,6 +217,8 @@ def get_model_config_from_hf(name: str, ) -> ModelConfig:
         expansion_ratio = ffn_embed_dim / hidden_dim
         if expansion_ratio == 3.5:
             mlp_gated_linear_units = True
+        else:
+            mlp_gated_linear_units = False
     else:
         mlp_gated_linear_units = False
 
@@ -312,12 +314,12 @@ def get_hf_models_by_type_and_task(
 def populate_model_and_gpu_configs() -> None:
     """Populate model, gpu, and data type configs from the pre-defined json files."""
     global model_configs, gpu_configs, dtype_configs
-    model_configs = read_configs(Path(__file__).parent /
-                                 Path(MODEL_CONFIG_DIR_NAME),
-                                 type="model")
-    gpu_configs = read_configs(Path(__file__).parent /
-                               Path(GPU_CONFIG_DIR_NAME),
-                               type="gpu")
+    # model_configs = read_configs(Path(__file__).parent /
+    #                              Path(MODEL_CONFIG_DIR_NAME),
+    #                              type="model")
+    # gpu_configs = read_configs(Path(__file__).parent /
+    #                            Path(GPU_CONFIG_DIR_NAME),
+    #                            type="gpu")
 
     dtype_configs = read_configs(Path(__file__).parent /
                                  Path(DTYPE_CONFIG_DIR_NAME),

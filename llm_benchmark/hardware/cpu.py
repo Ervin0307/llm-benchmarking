@@ -1,9 +1,93 @@
+import os
+import re
 import psutil
 import subprocess
 from typing import Optional
 
 from .constants import FlopsPerCycle
 
+def get_numa_info():
+    numa_info = []
+
+    # Get the number of NUMA nodes
+    node_dir = "/sys/devices/system/node/"
+    if not os.path.exists(node_dir):
+        raise EnvironmentError("NUMA information not available on this system.")
+    
+    node_dirs = [d for d in os.listdir(node_dir) if d.startswith("node")]
+
+    for node in node_dirs:
+        node_path = os.path.join(node_dir, node)
+        cpu_list_file = os.path.join(node_path, "cpulist")
+
+        # Read the list of CPUs assigned to this NUMA node
+        with open(cpu_list_file, 'r') as f:
+            cpu_list = f.read().strip()
+        
+        numa_info.append({
+            "name": node,
+            "cpus": cpu_list,
+        })
+
+    return numa_info
+
+def get_memcpy_bandwidth():
+    try:
+        # Run the command
+        command = ["numactl", "--cpunodebind=0", "--membind=1", "mbw", "1000"]
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Check if the command ran successfully
+        if result.returncode != 0:
+            raise RuntimeError(f"Command failed with error: {result.stderr}")
+
+        # Extract the line with MEMCPY method
+        output = result.stdout
+        memcpy_line = None
+
+        for line in output.splitlines():
+            if "MEMCPY" in line:
+                memcpy_line = line
+        
+        if not memcpy_line:
+            raise ValueError("MEMCPY result not found in output")
+
+        # Use regular expression to extract the average bandwidth (MB/s)
+        match = re.search(r'(\d+\.\d+) MiB/s', memcpy_line)
+        if match:
+            avg_bandwidth = float(match.group(1)) / 1024
+            print(f"Average Bandwidth (MEMCPY): {avg_bandwidth} GB/s")
+            return avg_bandwidth
+        else:
+            raise ValueError("Failed to extract bandwidth from MEMCPY result")
+
+    except Exception as e:
+        print(f"Error: {e}")
+
+def get_memory_bandwidth():
+    """Fetch memory information for bus width, clock speed, and data rate multiplier."""
+    
+    # Command to get memory information in Linux
+    cmd = "sudo dmidecode --type memory"
+    try:
+        output = subprocess.check_output(cmd, shell=True, text=True)
+        # Extracting bus width and clock speed
+        bus_width_match = re.search(r'Width:\s*(\d+)', output)
+        clock_speed_match = re.search(r'Speed:\s*(\d+)', output)
+        
+        if bus_width_match and clock_speed_match:
+            bus_width_bits = int(bus_width_match.group(1))
+            clock_speed_mhz = int(clock_speed_match.group(1))
+            data_rate_multiplier = 2  # Assuming DDR for this example
+            
+            bandwidth_mb_per_sec = bus_width_bits * clock_speed_mhz * data_rate_multiplier / 8
+            bandwidth_gb_per_sec = bandwidth_mb_per_sec / 1024
+            return bandwidth_gb_per_sec
+        else:
+            raise Exception("Could not find memory information.")
+    except subprocess.CalledProcessError as e:
+        print("Error executing command:", e)
+        return None
 
 def get_flops_per_cycle(isa_info):
     flops_per_cycle = FlopsPerCycle.DEFAULT
@@ -109,8 +193,9 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
         cm_info["cpu_memory_used"] = mem_info.used
         cm_info["cpu_memory_utilization"] = mem_info.percent
 
-    cm_info["cpu_memory_total"] = mem_info.total
-    cm_info["cpu_memory_available"] = mem_info.available
+    cm_info["cpu_memory_used"] = cm_info["cpu_memory_used"] / (1024 ** 3)
+    cm_info["cpu_memory_total"] = mem_info.total / (1024 ** 3)
+    cm_info["cpu_memory_available"] = mem_info.available / (1024 ** 3)
 
     cpu_freq = psutil.cpu_freq()
     avg_load = psutil.getloadavg()
@@ -129,7 +214,9 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
 
     num_physical_cores = psutil.cpu_count(logical=False)
     num_virtual_cores = psutil.cpu_count(logical=True)
-
+    #get numa node info
+    numa_info = get_numa_info()
+    print(numa_info)
     cm_info.update(
         {
             "cpu_freq_min": cpu_freq.min,
@@ -137,6 +224,10 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
             "num_physical_cores": num_physical_cores,
             "num_virtual_cores": num_virtual_cores,
             "threads_per_core": num_virtual_cores / num_physical_cores,
+            "numa_count": len(numa_info),
+            "numa_cores": "|".join([numa_info[i]["cpus"] for i in range(len(numa_info))]),
+            "memcpy_bandwidth": get_memcpy_bandwidth(),
+            "mem_bandwidth_GBs": get_memory_bandwidth(),
         }
     )
 

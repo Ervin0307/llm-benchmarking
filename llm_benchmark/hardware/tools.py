@@ -71,3 +71,20 @@ def get_hardware_info(output_dir=None):
             print(f"Hardware info saved to {output_dir}")
 
     return hw_info
+
+def create_device_config():
+
+    cpu_info = get_cpu_info()
+    print(cpu_info)
+    device_config = {}
+    device_config["name"] = "a10-pcie-28gb"
+    device_config["mem_per_GPU_in_GB"] = cpu_info["cpu_memory_total"] / cpu_info["numa_count"]
+    device_config["hbm_bandwidth_in_GB_per_sec"] = cpu_info["mem_bandwidth_GBs"]
+    device_config["intra_node_bandwidth_in_GB_per_sec"] = cpu_info["memcpy_bandwidth"]
+    device_config["intra_node_min_message_latency"] = 8e-06
+    device_config["peak_fp16_TFLOPS"] = cpu_info['tflops_max']
+    device_config["peak_i8_TFLOPS"] = 250
+    device_config["peak_i4_TFLOPS"] = 500
+    device_config["inter_node_bandwidth_in_GB_per_sec"] = 200
+    
+    return device_config
