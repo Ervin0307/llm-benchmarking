@@ -216,7 +216,7 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
     num_virtual_cores = psutil.cpu_count(logical=True)
     #get numa node info
     numa_info = get_numa_info()
-    print(numa_info)
+    
     cm_info.update(
         {
             "cpu_freq_min": cpu_freq.min,
