@@ -321,9 +321,9 @@ def populate_model_and_gpu_configs() -> None:
     #                            Path(GPU_CONFIG_DIR_NAME),
     #                            type="gpu")
 
-    dtype_configs = read_configs(Path(__file__).parent /
-                                 Path(DTYPE_CONFIG_DIR_NAME),
-                                 type="dtype")
+    # dtype_configs = read_configs(Path(__file__).parent /
+    #                              Path(DTYPE_CONFIG_DIR_NAME),
+    #                              type="dtype")
     logger.info(
         f"Populated {len(model_configs)} model configs, {len(gpu_configs)} gpu configs, {len(dtype_configs)} dtype configs"
     )
@@ -425,31 +425,4 @@ def dump_hf_model_configs_by_type_and_task(
     )
 
 
-populate_model_and_gpu_configs()
-
-if __name__ == "__main__":
-    logger.setLevel(logging.getLevelName("INFO"))
-    fire.Fire(
-        {
-            "list_model_configs":
-            list_model_configs,
-            "list_gpu_configs":
-            list_gpu_configs,
-            "list_dtype_configs":
-            list_dtype_configs,
-            "get_model_config_by_name":
-            get_model_config_by_name,
-            "get_gpu_config_by_name":
-            get_gpu_config_by_name,
-            "get_dtype_config_by_name":
-            get_dtype_config_by_name,
-            "get_hf_models_by_type_and_task":
-            get_hf_models_by_type_and_task,
-            "dump_model_config_by_name":
-            dump_model_config_by_name,
-            "dump_hf_model_configs_by_type_and_task":
-            dump_hf_model_configs_by_type_and_task,
-        },
-        serialize=lambda x: json.dumps(x, cls=EnhancedJSONEncoder, indent=4)
-        if dataclasses.is_dataclass(x) else x,
-    )
+# populate_model_and_gpu_configs()
