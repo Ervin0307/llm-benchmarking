@@ -18,6 +18,7 @@ from llm_benchmark.profiler import tools as profiler_tools
 from llm_benchmark.hardware import tools as hardware_tools
 from llm_benchmark.hardware import monitor as hw_monitor
 from llm_benchmark.engine import tools as engine_tools
+from llm_benchmark.model import analysis as model_tools
 
 
 def create_config(run_config):
@@ -267,6 +268,17 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
             result["output_tokens"] = config["output_tokens"]
             result["concurrency"] = config["concurrency"]
 
+            model_analysis = model_tools.infer(
+                model_name=model, 
+                device_config=hardware_tools.create_device_config(),
+                seq_len=config["input_tokens"], 
+                num_tokens_to_generate=config["output_tokens"], 
+                batch_size_per_gpu=config["concurrency"],
+                tp_size=1,
+                output_dir=os.environ["PROFILER_RESULT_DIR"],
+                run_id=run_id
+            )
+
             results.append(result)
 
             import time
@@ -336,7 +348,7 @@ def main(args):
         )
 
     if args.profile_hardware:
-        hardware_tools.get_hardware_info(output_dir=os.environ["PROFILER_RESULT_DIR"])
+        hardware_info = hardware_tools.get_hardware_info(output_dir=os.environ["PROFILER_RESULT_DIR"])
 
 
 if __name__ == "__main__":

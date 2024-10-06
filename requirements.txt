@@ -1,14 +1,15 @@
 # H/w
 psutil
-# pycuda
-# nvidia-ml-py3
+#pycuda
+#nvidia-ml-py3
 
 # Benchamrk & Profiling
-# torch
-# requests
-# llmperf @ git+https://github.com/ray-project/llmperf.git
+torch
+requests
+#llmperf @ git+https://github.com/ray-project/llmperf.git
 
 # Other
 tqdm
-# pyyaml
-# numpy
+pyyaml
+numpy
+transformers
