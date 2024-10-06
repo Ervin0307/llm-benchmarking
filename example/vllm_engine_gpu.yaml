@@ -1,47 +1,78 @@
 args:
-  model: meta-llama/Meta-Llama-3-8B-Instruct
+  model: meta-llama/Meta-Llama-3.1-8B-Instruct
   port: 8989
   tensor-parallel-size:
     - 1
-    # - 2
+    - 2
   block-size:
     - 8
-    # - 16
-    # - 32
-    # - 64
+    - 16
+    - 32
+    - 64
   distributed-executor-backend: mp
-  swap-space:
-    - 4
-    # - 16
-    # - 32
+  # swap-space:
+  #   - 4
+  #   - 16
+  max-num-seqs:
+    - 128
+    - 256
   # max-num-batched-tokens:
   #   - 8192
   #   - 16384
-  max-num-seqs:
-    # - 64
-    # - 128
-    # - 256
-    - 512
   # rope-scaling: 
   #   - '{"rope_type":"llama3","factor":1.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
   #   - '{"rope_type":"llama3","factor":2.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
   num-scheduler-steps:
     - 1
-    # - 2
+    - 2
     # - 4
   scheduler-delay-factor:
     - 0.0
-    # - 0.5
-    # - 1.0
+    - 0.5
+    - 1.0
   max-model-len: 8192
-
+  gpu-memory-utilization: 0.9
+  # max-seq-len-to-capture:
+  #   - 1024
+  #   - 8192
+  enable-prefix-caching: true
+  enable-chunked-prefill: true
+  # kv-cache-dtype:
+  #   - auto
+  #   - fp8_e4m3
+  #   - fp8_e5m2
+  # quantization:
+  #   - null
+  #   - awq
+  #   - fp8
+  #   - gguf
+  #   - bitsandbytes
 
 envs:
-  VLLM_CPU_KVCACHE_SPACE:
-    - 4
-    # - 16
-    # - 40
-    # - 80
-  # VLLM_ATTENTION_BACKEND: TORCH_SDPA
+  # VLLM_ATTENTION_BACKEND:
+  #   - XFORMERS
+  #   - FLASH_ATTN
+  #   - FLASHINFER
   # VLLM_CPU_OMP_THREADS_BIND: '0-53|56-109'
-  CUDA_VISIBLE_DEVICES: "0"
+  CUDA_VISIBLE_DEVICES: "1,2"
+
+run_config:
+  mean_input_tokens:
+    - 50
+    - 200
+    - 550
+    - 1000
+    - 2000
+  mean_output_tokens:
+    - 128
+    - 250
+    - 550
+    - 1000
+    - 1500
+  num_concurrent_requests: 
+    - 1
+    - 10
+    - 50
+    - 100
+    - 200
+    - 500

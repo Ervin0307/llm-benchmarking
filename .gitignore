@@ -4,3 +4,7 @@ results
 __pycache__
 *.egg-info
 *.pyc
+
+notebooks
+data
+*.log

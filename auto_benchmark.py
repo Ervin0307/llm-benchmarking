@@ -1,11 +1,16 @@
 import os
-import argparse
 import yaml
+import uuid
+import json
+import hashlib
+import argparse
 import threading
 import itertools
 
 from tqdm import tqdm
-import uuid
+from pathlib import Path
+from copy import deepcopy
+from datetime import datetime
 
 from llm_benchmark.controller import single_node as single_node_controller
 from llm_benchmark.benchmark import tools as benchmark_tools
@@ -15,11 +20,23 @@ from llm_benchmark.hardware import monitor as hw_monitor
 from llm_benchmark.engine import tools as engine_tools
 
 
-def create_config(args):
+def create_config(run_config):
     configs = []
-    input_tokens = [int(x) for x in args.input_tokens.split(",")]
-    output_tokens = [int(x) for x in args.output_tokens.split(",")]
-    concurrencies = [int(x) for x in args.concurrency.split(",")]
+    input_tokens = (
+        [int(x) for x in run_config["mean_input_tokens"]]
+        if isinstance(run_config["mean_input_tokens"], list)
+        else [run_config["mean_input_tokens"]]
+    )
+    output_tokens = (
+        [int(x) for x in run_config["mean_output_tokens"]]
+        if isinstance(run_config["mean_output_tokens"], list)
+        else [run_config["mean_output_tokens"]]
+    )
+    concurrencies = (
+        [int(x) for x in run_config["num_concurrent_requests"]]
+        if isinstance(run_config["num_concurrent_requests"], list)
+        else [run_config["num_concurrent_requests"]]
+    )
 
     for input_token in input_tokens:
         if input_token < 20:
@@ -34,6 +51,41 @@ def create_config(args):
                 }
                 configs.append(config)
     return configs
+
+
+def load_checkpoint(ckpt_path: str):
+    if os.path.isdir(ckpt_path):
+        filepaths = sorted(Path(ckpt_path).iterdir(), key=lambda t: t.stat().st_mtime)
+        ckpt_path = filepaths[-1] if len(filepaths) else None
+
+    if not os.path.isfile(ckpt_path):
+        print(f"No checkpoints found in {ckpt_path} for resuming.")
+        return
+
+    print(f"Resuming benchmarking from checkpoint {ckpt_path}.")
+    with open(ckpt_path, "r") as fp:
+        return json.load(fp)
+
+
+def save_checkpoint(checkpoint, savepath):
+    Path(savepath).parent.mkdir(exist_ok=True, parents=True)
+
+    with open(savepath, "w") as fp:
+        json.dump(checkpoint, fp, indent=4)
+
+
+def warmup_benchmark(model, base_url, benchmark_script):
+    print("Running warmup benchmark")
+    result = benchmark_tools.run_benchmark(
+        model,
+        base_url,
+        250,
+        250,
+        10,
+        benchmark_script,
+        os.environ["PROFILER_RESULT_DIR"],
+        "warmup",
+    )
 
 
 # Function to process and create combinations
@@ -92,48 +144,97 @@ def create_engine_config(engine_config_file):
             # Append the complete config to the list
             configs.append(new_config)
 
-    return configs
+    return configs, engine_config["run_config"]
 
 
-def run_benchmark(args, engine_config=None):
+def run_benchmark(args, engine_config, run_config, checkpoint=None):
+    checkpoint = checkpoint or {}
     base_url = f"http://localhost:{args.port}/v1"
+    model = engine_config["args"]["model"]
 
-    if args.engine_config_id:
-        engine_config_id = args.engine_config_id
+    engine_kwargs = {
+        "docker_image": args.docker_image,
+        "env_values": engine_config["envs"] if engine_config else [],
+        "result_dir": os.environ["PROFILER_RESULT_DIR"],
+        "extra_args": engine_config["args"] if engine_config else [],
+        "cpu_only": args.cpu_only,
+        "profile_model": args.profile_model,
+    }
+    engine_config_hash = hashlib.sha1(
+        json.dumps(engine_kwargs, sort_keys=True).encode()
+    ).hexdigest()
+
+    if checkpoint.get(engine_config_hash):
+        engine_config_id = checkpoint[engine_config_hash]["engine_config_id"]
     else:
         engine_config_id = str(uuid.uuid4())[:8]
+        checkpoint[engine_config_hash] = {
+            "engine_config_id": engine_config_id,
+            "status": "pending",
+            "runs": {},
+        }
 
     if args.docker_image:
-        container_id = single_node_controller.deploy_model(
-            args.docker_image,
-            engine_config["envs"] if engine_config else [],
-            os.environ["PROFILER_RESULT_DIR"],
-            engine_config["args"] if engine_config else [],
-            engine_config_id,
-            args.port,
-            cpu_only=args.cpu_only,
-        )
+        try:
+            container_id = single_node_controller.deploy_model(
+                engine_config_id=engine_config_id, port=args.port, **engine_kwargs
+            )
+        except Exception as e:
+            print(f"Error during {engine_config_id} deployment: {e}")
+            checkpoint[engine_config_hash]["status"] = "deploy_failed"
+            return checkpoint
     else:
         container_id = None
 
     if args.engine_config_id or container_id:
-        engine_tools.create_engine_summary(args.engine, engine_config_id, args.model)
+        try:
+            engine_tools.create_engine_summary(args.engine, engine_config_id, model)
+        except Exception as e:
+            print(f"Error during {engine_config_id} summary creation: {e}")
+            checkpoint[engine_config_hash]["status"] = "engine_summary_failed"
+            return checkpoint
+
+    try:
+        warmup_benchmark(model, base_url, args.benchmark_script)
+    except Exception as e:
+        print(f"Error during {engine_config_id} warm up: {e}")
+        checkpoint[engine_config_hash]["status"] = "warmup_failed"
+        return checkpoint
 
     log_metrics_task = None
     stop_event = None
     results = []
     try:
-        configs = create_config(args)
+        configs = create_config(run_config)
         for config in tqdm(configs, desc="Running benchmarks"):
             print(config)
-            run_id = str(uuid.uuid4())[:8]
+            run_config_hash = hashlib.sha1(
+                json.dumps(config, sort_keys=True).encode()
+            ).hexdigest()
+
+            run_ckpt = (
+                checkpoint.get(engine_config_hash, {})
+                .get("runs", {})
+                .get(run_config_hash)
+            )
+            if run_ckpt is not None:
+                run_id = run_ckpt["run_id"]
+                if run_ckpt.get("status", "") == "success":
+                    print(f"Skipping run for {engine_config_id}:{run_id}")
+                    continue
+            else:
+                run_id = str(uuid.uuid4())[:8]
+                checkpoint[engine_config_hash]["runs"][run_config_hash] = {
+                    "run_id": run_id,
+                    "status": "pending",
+                }
 
             stop_event = threading.Event()
             log_metrics_task = threading.Thread(
                 target=hw_monitor.log_system_metrics,
                 kwargs={
                     "output_dir": os.path.join(
-                        os.environ["PROFILER_RESULT_DIR"], args.model.replace("/", "--")
+                        os.environ["PROFILER_RESULT_DIR"], model.replace("/", "--")
                     ),
                     "pid": single_node_controller.get_container_pid(container_id)
                     if container_id is not None
@@ -149,7 +250,7 @@ def run_benchmark(args, engine_config=None):
             log_metrics_task.start()
 
             result = benchmark_tools.run_benchmark(
-                args.model,
+                model,
                 base_url,
                 config["input_tokens"],
                 config["output_tokens"],
@@ -168,6 +269,10 @@ def run_benchmark(args, engine_config=None):
 
             results.append(result)
 
+            import time
+
+            time.sleep(1)
+
             stop_event.set()
             log_metrics_task.join()
             log_metrics_task = None
@@ -175,8 +280,14 @@ def run_benchmark(args, engine_config=None):
 
             benchmark_tools.create_summary([result], os.environ["PROFILER_RESULT_DIR"])
             print(result)
+            checkpoint[engine_config_hash]["runs"][run_config_hash]["status"] = (
+                "success"
+            )
     except Exception as e:
-        print(f"Error during benchmark: {e}")
+        print(f"Error during {engine_config_id} benchmark: {e}")
+        checkpoint[engine_config_hash]["runs"][run_config_hash]["status"] = (
+            "benchmark_failed"
+        )
     finally:
         if container_id:
             single_node_controller.remove_container(container_id)
@@ -184,25 +295,43 @@ def run_benchmark(args, engine_config=None):
             stop_event.set()
             log_metrics_task.join()
 
+        checkpoint[engine_config_hash]["status"] = "done"
+        return checkpoint
+
 
 def main(args):
     os.makedirs(os.environ["PROFILER_RESULT_DIR"], exist_ok=True)
 
-    if args.engine_config_file:
-        engine_configs = create_engine_config(args.engine_config_file)
-    else:
-        engine_configs = [
-            None
-        ]  # Assuming a default or empty config if file is not provided
+    checkpoint = None
+    if args.resume:
+        checkpoint = load_checkpoint(
+            args.checkpoint
+            or os.path.join(os.environ["PROFILER_RESULT_DIR"], "checkpoints")
+        )
+
+    new_checkpoint = deepcopy(checkpoint) if checkpoint is not None else {}
+    new_ckpt_path = os.path.join(
+        os.environ["PROFILER_RESULT_DIR"],
+        "checkpoints",
+        datetime.now().strftime("%Y%m%d-%H%M%S") + ".json",
+    )
 
     if args.run_benchmark:
+        if args.engine_config_file:
+            engine_configs, run_config = create_engine_config(args.engine_config_file)
+        else:
+            raise ValueError("Engine config file is required")
+
         for engine_config in tqdm(engine_configs, desc="Running engine configs"):
-            run_benchmark(args, engine_config)
+            new_checkpoint = run_benchmark(
+                args, engine_config, run_config, new_checkpoint
+            )
+            save_checkpoint(new_checkpoint, new_ckpt_path)
             # break
 
     if args.profile_collectives:
         profiler_tools.profile_collectives(
-            max_collective_size=512 * 1024,
+            max_collective_size=4096 * 8192,
             output_dir=os.environ["PROFILER_RESULT_DIR"],
         )
 
@@ -218,9 +347,6 @@ if __name__ == "__main__":
         description="Run a token throughput and latency benchmark."
     )
 
-    args.add_argument(
-        "--model", type=str, required=True, help="The model to use for this load test."
-    )
     args.add_argument(
         "--docker-image",
         type=str,
@@ -258,24 +384,6 @@ if __name__ == "__main__":
         help="Whether to run the benchmark.",
     )
     args.add_argument(
-        "--input-tokens",
-        type=str,
-        default="128,256,512,1024",
-        help="List of different input token combinations",
-    )
-    args.add_argument(
-        "--output-tokens",
-        type=str,
-        default="128,256,512,1024",
-        help="List of different output token combinations",
-    )
-    args.add_argument(
-        "--concurrency",
-        type=str,
-        default="1,10,20,30,50,100",
-        help="List of concurrency for the benchmark",
-    )
-    args.add_argument(
         "--benchmark-script",
         type=str,
         default="llmperf",
@@ -296,6 +404,22 @@ if __name__ == "__main__":
         "--profile-hardware",
         action="store_true",
         help="Whether to profile the hardware.",
+    )
+    args.add_argument(
+        "--profile-model",
+        action="store_true",
+        help="Whether to profile the model.",
+    )
+    args.add_argument(
+        "--resume",
+        action="store_true",
+        help="Whether to resume the benchmark from the last checkpoint",
+    )
+    args.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Checkpoint file path to resume from, if not set and  resume=True, fallbacks to the latest",
     )
     args = args.parse_args()
 

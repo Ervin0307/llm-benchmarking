@@ -79,9 +79,7 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
         try:
             proc = psutil.Process(pid)
 
-            cm_info["cpu_utilization"] = proc.cpu_percent(
-                interval=None if current_only else 1.0
-            )
+            cm_info["cpu_utilization"] = proc.cpu_percent(interval=1.0)
             per_core_util = psutil.cpu_percent(interval=None, percpu=True)
             cpu_core_affinity = proc.cpu_affinity()
             cm_info["cpu_core_affinity"] = ",".join(map(str, cpu_core_affinity))
@@ -101,9 +99,7 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
             print(f"CPU extraction failed with {str(e)}")
             return cm_info
     else:
-        cm_info["cpu_utilization"] = psutil.cpu_percent(
-            interval=None if current_only else 1.0
-        )
+        cm_info["cpu_utilization"] = psutil.cpu_percent(interval=1.0)
 
         mem_info = psutil.virtual_memory()
         cm_info["cpu_memory_used"] = mem_info.used
