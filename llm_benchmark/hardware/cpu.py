@@ -74,11 +74,29 @@ def get_memory_bandwidth():
         # Extracting bus width and clock speed
         bus_width_match = re.search(r'Width:\s*(\d+)', output)
         clock_speed_match = re.search(r'Speed:\s*(\d+)', output)
+        memory_type_match = re.search(r'Type:\s*(.*)', output)
+        
+        if memory_type_match:
+            memory_type = memory_type_match.group(1)
+            
+            if "DDR" in memory_type:
+                data_rate_multiplier = 2
+            elif "DDR2" in memory_type:
+                data_rate_multiplier = 4
+            elif "DDR3" in memory_type:
+                data_rate_multiplier = 8
+            elif "DDR4" in memory_type:
+                data_rate_multiplier = 16
+            elif "DDR5" in memory_type:
+                data_rate_multiplier = 32
+            else:
+                raise Exception("Unsupported memory type")
+        else:
+            raise Exception("Could not find memory type")
         
         if bus_width_match and clock_speed_match:
             bus_width_bits = int(bus_width_match.group(1))
             clock_speed_mhz = int(clock_speed_match.group(1))
-            data_rate_multiplier = 2  # Assuming DDR for this example
             
             bandwidth_mb_per_sec = bus_width_bits * clock_speed_mhz * data_rate_multiplier / 8
             bandwidth_gb_per_sec = bandwidth_mb_per_sec / 1024
@@ -245,6 +263,13 @@ def get_temp_and_power_info(current_only: bool = False):
 
 
 def get_cpu_info():
+    cpu_info = subprocess.check_output(["lscpu"], text=True)
+    if "Intel" in cpu_info:
+        print("CPU is Intel")
+    else:
+        print("CPU is not Intel")
+        return {}
+    
     info = get_cores_and_mem_info()
     info.update(get_temp_and_power_info())
 
@@ -262,3 +287,21 @@ def get_cpu_info():
     )
 
     return {**info, **cache_isa_info}
+
+
+def create_cpu_config():
+
+    dev_info = get_cpu_info()
+    
+    device_config = {}
+    device_config["name"] = "a10-pcie-28gb"
+    device_config["mem_per_GPU_in_GB"] = dev_info["cpu_memory_total"] / dev_info["numa_count"]
+    device_config["hbm_bandwidth_in_GB_per_sec"] = dev_info["mem_bandwidth_GBs"]
+    device_config["intra_node_bandwidth_in_GB_per_sec"] = dev_info["memcpy_bandwidth"]
+    device_config["intra_node_min_message_latency"] = 8e-06
+    device_config["peak_fp16_TFLOPS"] = dev_info['tflops_max'] if dev_info['tflops_max'] > 0.0 else dev_info['tflops_current']
+    device_config["peak_i8_TFLOPS"] = 250
+    device_config["peak_i4_TFLOPS"] = 500
+    device_config["inter_node_bandwidth_in_GB_per_sec"] = 200
+    
+    return device_config

@@ -4,7 +4,8 @@ import torch
 import datetime
 
 from .benchmark import flops_benchmark, memory_bandwidth_benchmark
-from .cpu import get_cpu_info
+from .cpu import create_cpu_config, get_cpu_info
+from .cuda import create_cuda_config
 
 from llm_benchmark.utils.device_utils import get_available_devices
 
@@ -72,19 +73,7 @@ def get_hardware_info(output_dir=None):
 
     return hw_info
 
-def create_device_config():
+def create_device_config(cpu_only=False):
 
-    cpu_info = get_cpu_info()
-    print(cpu_info)
-    device_config = {}
-    device_config["name"] = "a10-pcie-28gb"
-    device_config["mem_per_GPU_in_GB"] = cpu_info["cpu_memory_total"] / cpu_info["numa_count"]
-    device_config["hbm_bandwidth_in_GB_per_sec"] = cpu_info["mem_bandwidth_GBs"]
-    device_config["intra_node_bandwidth_in_GB_per_sec"] = cpu_info["memcpy_bandwidth"]
-    device_config["intra_node_min_message_latency"] = 8e-06
-    device_config["peak_fp16_TFLOPS"] = cpu_info['tflops_max'] if cpu_info['tflops_max'] > 0.0 else cpu_info['tflops_current']
-    device_config["peak_i8_TFLOPS"] = 250
-    device_config["peak_i4_TFLOPS"] = 500
-    device_config["inter_node_bandwidth_in_GB_per_sec"] = 200
-    print(device_config)
-    return device_config
+    return create_cpu_config() if cpu_only else create_cuda_config()
+

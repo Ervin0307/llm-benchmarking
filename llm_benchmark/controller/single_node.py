@@ -41,6 +41,7 @@ def build_docker_run_command(
         "-d",
         "-it",
         "--rm",
+        "--shm-size=8G",
         "--privileged",
         "--network=host",
     ]

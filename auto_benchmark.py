@@ -150,7 +150,7 @@ def create_engine_config(engine_config_file):
 
 def run_benchmark(args, engine_config, run_config, checkpoint=None):
     checkpoint = checkpoint or {}
-    base_url = f"http://localhost:{args.port}/v1"
+    base_url = f"http://localhost:{engine_config['args']['port']}/v1"
     model = engine_config["args"]["model"]
 
     engine_kwargs = {
@@ -178,7 +178,7 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
     if args.docker_image:
         try:
             container_id = single_node_controller.deploy_model(
-                engine_config_id=engine_config_id, port=args.port, **engine_kwargs
+                engine_config_id=engine_config_id, port=engine_config["args"]["port"], **engine_kwargs
             )
         except Exception as e:
             print(f"Error during {engine_config_id} deployment: {e}")
@@ -270,11 +270,11 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
 
             model_analysis = model_tools.infer(
                 model_name=model, 
-                device_config=hardware_tools.create_device_config(),
+                device_config=hardware_tools.create_device_config(args.cpu_only),
                 seq_len=config["input_tokens"], 
                 num_tokens_to_generate=config["output_tokens"], 
                 batch_size_per_gpu=config["concurrency"],
-                tp_size=1,
+                tp_size=engine_config["args"].get("tensor-parallel-size", 1),
                 output_dir=os.environ["PROFILER_RESULT_DIR"],
                 run_id=run_id
             )
@@ -383,12 +383,6 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="The engine config id to be used for the testing.",
-    )
-    args.add_argument(
-        "--port",
-        type=str,
-        default="8000",
-        help="The port where the engine will be running",
     )
     args.add_argument(
         "--run-benchmark",

@@ -246,7 +246,7 @@ class LLMAnalysis:
                  self.get_gpu_hbm_bandwidth() / 2)
         return pivot
 
-    def get_num_params_embedding(self, shared_embedding: bool = True) -> int:
+    def get_num_params_embedding(self, shared_embedding: bool = False) -> int:
         """Get the number of parameters in the embedding layer.
 
         Args:
@@ -2805,4 +2805,4 @@ def train(
 
 if __name__ == "__main__":
     
-    infer(model_name="meta-llama/Meta-Llama-3-8B-Instruct", output_dir=".", batch_size_per_gpu=50)
+    infer(model_name="meta-llama/Meta-Llama-3.1-8B-Instruct", output_dir=".", batch_size_per_gpu=50)

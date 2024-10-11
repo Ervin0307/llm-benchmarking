@@ -8,6 +8,7 @@ except ImportError:
         "pynvml import failed, the system either don't have cuda support or is not configured properly."
     )
 
+from llm_benchmark.hardware.constants import DeviceInfo
 
 def filter_nvidia_smi(filters: list = None):
     result = subprocess.run(
@@ -182,7 +183,7 @@ def get_cores_info(device_id, current_only: bool = False):
 
 def get_throttle_reasons(device_id):
     handle = pynvml.nvmlDeviceGetHandleByIndex(device_id)
-
+    
     throttle_reasons = {
         pynvml.nvmlClocksThrottleReasonGpuIdle: "GPUIdle",
         pynvml.nvmlClocksThrottleReasonHwSlowdown: "HwSlowdown",
@@ -190,7 +191,7 @@ def get_throttle_reasons(device_id):
         pynvml.nvmlClocksThrottleReasonUserDefinedClocks: "UserDefinedClocks",
         pynvml.nvmlClocksThrottleReasonApplicationsClocksSetting: "ApplicationClocksSetting",
         pynvml.nvmlClocksThrottleReasonAll: "All",
-        pynvml.nvmlClocksThrottleReasonUnknown: "Unkown",
+        # pynvml.nvmlClocksThrottleReasonUnknown: "Unknown",
         pynvml.nvmlClocksThrottleReasonNone: None,
     }
     code = pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(handle)
@@ -368,9 +369,9 @@ def get_memory_info(device_id):
             }
         )
         return mem_info
-    except Exception:
+    except Exception as e:
         print(
-            "GPU memory extraction attempt #1 failed, falling back to legacy parsing."
+            f"GPU memory extraction attempt #1 failed, falling back to legacy parsing. Error: {e}"
         )
 
     devices = re.split(r"\nGPU [0-9A-Fa-f:.]+", filter_nvidia_smi())
@@ -457,7 +458,7 @@ def get_gpu_info():
             gpu_info.append(
                 {
                     "device_id": device_id,
-                    "product_name": pynvml.nvmlDeviceGetName(handle).decode("utf-8"),
+                    "product_name": pynvml.nvmlDeviceGetName(handle).decode("utf-8").replace(" ", "_").upper(),
                     "product_brand": pynvml.nvmlDeviceGetBrand(handle),
                     "architecture": extract_value(
                         r"Product Architecture\s+:\s+(.+)", devices[device_id]
@@ -483,3 +484,24 @@ def get_gpu_info():
         pynvml.nvmlShutdown()
 
     return gpu_info, smi_output
+
+
+def create_cuda_config():
+
+    dev_info, _ = get_gpu_info()
+    print(dev_info[0])
+    print(dev_info[0]['product_name'])
+    
+    device_info = DeviceInfo[dev_info[0]['product_name']].value
+    device_config = {
+        "name": device_info.name,
+        "mem_per_GPU_in_GB": device_info.mem_per_GPU_in_GB,
+        "hbm_bandwidth_in_GB_per_sec": device_info.hbm_bandwidth_in_GB_per_sec,
+        "intra_node_bandwidth_in_GB_per_sec": device_info.intra_node_bandwidth_in_GB_per_sec,
+        "intra_node_min_message_latency": device_info.intra_node_min_message_latency,
+        "peak_fp16_TFLOPS": device_info.peak_fp16_TFLOPS,
+        "peak_i8_TFLOPS": device_info.peak_i8_TFLOPS,
+        "peak_i4_TFLOPS": device_info.peak_i4_TFLOPS,
+        "inter_node_bandwidth_in_GB_per_sec": device_info.inter_node_bandwidth_in_GB_per_sec,
+    }
+    return device_config
