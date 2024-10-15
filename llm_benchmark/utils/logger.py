@@ -48,6 +48,8 @@ stdout_handler.setFormatter(CustomFormatter(fmt))
 logger = logging.getLogger("__name__")
 logger.addHandler(stdout_handler)
 
+logger.setLevel(logging.WARNING)
+
 
 def get_current_level():
     """Return logger's current log level."""
