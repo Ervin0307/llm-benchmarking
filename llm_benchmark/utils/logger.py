@@ -48,7 +48,7 @@ stdout_handler.setFormatter(CustomFormatter(fmt))
 logger = logging.getLogger("__name__")
 logger.addHandler(stdout_handler)
 
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.ERROR)
 
 
 def get_current_level():
