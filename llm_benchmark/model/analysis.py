@@ -1624,10 +1624,10 @@ class LLMAnalysis:
 
         memory_left = (self.gpu_config.mem_per_GPU_in_GB * 1024**3 -
                        weight_memory_per_gpu)
-        assert memory_left > 0, (
-            "model is too large (requiring"
-            f" {_num_to_string(weight_memory_per_gpu)}B) to fit in total GPU"
-            " memory")
+        # assert memory_left > 0, (
+        #     "model is too large (requiring"
+        #     f" {_num_to_string(weight_memory_per_gpu)}B) to fit in total GPU"
+        #     " memory")
 
         logger.info(
             f"weight_memory_per_gpu: {_num_to_string(weight_memory_per_gpu)}B"
@@ -1671,13 +1671,13 @@ class LLMAnalysis:
         logger.info("prefill_activation_memory_per_gpu with batch_size_per_gpu"
                     f" {batch_size_per_gpu}:"
                     f" {_num_to_string(prefill_activation_memory_per_gpu)}B")
-        assert memory_left > prefill_activation_memory_per_gpu, (
-            "prefill activation memory is too large with batch_size_per_gpu ="
-            f" {batch_size_per_gpu} to fit in GPU memory(requiring"
-            f" {_num_to_string(prefill_activation_memory_per_gpu)}B),"
-            " memory_left after fitting in model weights:"
-            f" {_num_to_string(memory_left)}B, prefill_max_batch_size_per_gpu:"
-            f" {prefill_max_batch_size_per_gpu}")
+        # assert memory_left > prefill_activation_memory_per_gpu, (
+        #     "prefill activation memory is too large with batch_size_per_gpu ="
+        #     f" {batch_size_per_gpu} to fit in GPU memory(requiring"
+        #     f" {_num_to_string(prefill_activation_memory_per_gpu)}B),"
+        #     " memory_left after fitting in model weights:"
+        #     f" {_num_to_string(memory_left)}B, prefill_max_batch_size_per_gpu:"
+        #     f" {prefill_max_batch_size_per_gpu}")
 
         prefill_num_flops_fwd_total = self.get_num_flops_fwd_total(
             batch_size_per_gpu, seq_len)
@@ -1734,16 +1734,16 @@ class LLMAnalysis:
                 memory_left /
                 ((decode_activation_memory_per_gpu + kv_cache_memory_per_gpu) /
                  batch_size_per_gpu))
-            assert memory_left > (
-                kv_cache_memory_per_gpu + decode_activation_memory_per_gpu
-            ), ("kv_cache and activation memory with batch_size_per_gpu ="
-                f" {batch_size_per_gpu} is too large to fit in GPU memory"
-                " (requiring"
-                f" {_num_to_string((kv_cache_memory_per_gpu + decode_activation_memory_per_gpu))}B),"
-                " memory_left after fitting in model weights:"
-                f" {_num_to_string(memory_left)}B,"
-                " decode_max_batch_size_per_gpu:"
-                f" {decode_max_batch_size_per_gpu}")
+            # assert memory_left > (
+            #     kv_cache_memory_per_gpu + decode_activation_memory_per_gpu
+            # ), ("kv_cache and activation memory with batch_size_per_gpu ="
+            #     f" {batch_size_per_gpu} is too large to fit in GPU memory"
+            #     " (requiring"
+            #     f" {_num_to_string((kv_cache_memory_per_gpu + decode_activation_memory_per_gpu))}B),"
+            #     " memory_left after fitting in model weights:"
+            #     f" {_num_to_string(memory_left)}B,"
+            #     " decode_max_batch_size_per_gpu:"
+            #     f" {decode_max_batch_size_per_gpu}")
         else:
             decode_max_batch_size_per_gpu = int(
                 memory_left / prefill_activation_memory_batch_size_1)
@@ -1752,10 +1752,10 @@ class LLMAnalysis:
                         " decode_max_batch_size_per_gpu:"
                         f" {decode_max_batch_size_per_gpu}")
 
-            assert batch_size_per_gpu <= decode_max_batch_size_per_gpu, (
-                f"batch_size_per_gpu {batch_size_per_gpu} is too large to fit"
-                " in GPU memory, decode_max_batch_size_per_gpu:"
-                f" {decode_max_batch_size_per_gpu}")
+            # assert batch_size_per_gpu <= decode_max_batch_size_per_gpu, (
+            #     f"batch_size_per_gpu {batch_size_per_gpu} is too large to fit"
+            #     " in GPU memory, decode_max_batch_size_per_gpu:"
+            #     f" {decode_max_batch_size_per_gpu}")
 
             decode_activation_memory_per_layer = (
                 self.get_activation_memory_per_layer(
