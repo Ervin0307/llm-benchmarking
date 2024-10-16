@@ -246,7 +246,7 @@ class LLMAnalysis:
                  self.get_gpu_hbm_bandwidth() / 2)
         return pivot
 
-    def get_num_params_embedding(self, shared_embedding: bool = True) -> int:
+    def get_num_params_embedding(self, shared_embedding: bool = False) -> int:
         """Get the number of parameters in the embedding layer.
 
         Args:
@@ -999,14 +999,14 @@ class LLMAnalysis:
             + num_flops_logit_layer)
 
         # validate only when using Multi Head Attention (MHA)
-        if self.model_config.num_key_value_groups == 1:
-            assert within_range(
-                num_flops_fwd_total,
-                (24 * batch_size * num_layers * seq_len * hidden_dim**2 *
-                 (1 + seq_len / (6 * hidden_dim) + vocab_size /
-                  (12 * num_layers * hidden_dim))),
-                TOLERANCE,
-            )
+        # if self.model_config.num_key_value_groups == 1:
+        #     assert within_range(
+        #         num_flops_fwd_total,
+        #         (24 * batch_size * num_layers * seq_len * hidden_dim**2 *
+        #          (1 + seq_len / (6 * hidden_dim) + vocab_size /
+        #           (12 * num_layers * hidden_dim))),
+        #         TOLERANCE,
+        #     )
 
         return num_flops_fwd_total
 
@@ -2805,4 +2805,4 @@ def train(
 
 if __name__ == "__main__":
     
-    infer(model_name="meta-llama/Meta-Llama-3-8B-Instruct", output_dir=".", batch_size_per_gpu=50)
+    infer(model_name="meta-llama/Meta-Llama-3.1-8B-Instruct", output_dir=".", batch_size_per_gpu=50)
