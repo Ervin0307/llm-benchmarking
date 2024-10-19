@@ -16,6 +16,8 @@ class EngineConfig:
         max_num_seqs: int = 1024,
         enable_prefix_cache: bool = True,
         enable_chunked_prefill: bool = False,
+        chunked_prefill_size: int = 8192,
+        max_prefill_tokens: int = 16384,
         disable_sliding_window: bool = False,
         quantization: str = None, # fp16, int8, int4, etc.
         rope_scaling: dict = None, # {type: linear, factor: 1.0},
@@ -23,7 +25,12 @@ class EngineConfig:
         max_seq_len_to_capture: int = 4096,
         num_scheduler_steps: int = 1,
         scheduler_delay_factor: float = 0.0,
+        schedule_policy: str = "lpm", # "lpm", "random", "fcfs", "dfs-weight"
+        schedule_conservativeness: float = 0.0,
+        stream_interval: float = 0.0,
         attention_backend: str = "flash_attn", # flash_attn, flash_infer, torch_sdpa
+        sampling_backend: str = "flashinfer", # "flashinfer", "pytorch"
+        enable_torch_compile: bool = False,
     ):
 
         self.model_name = model_name
@@ -39,6 +46,8 @@ class EngineConfig:
         self.max_num_seqs = max_num_seqs
         self.enable_prefix_cache = enable_prefix_cache
         self.enable_chunked_prefill = enable_chunked_prefill
+        self.chunked_prefill_size = chunked_prefill_size
+        self.max_prefill_tokens = max_prefill_tokens
         self.disable_sliding_window = disable_sliding_window
         self.quantization = quantization
         self.rope_scaling = rope_scaling
@@ -46,8 +55,12 @@ class EngineConfig:
         self.max_seq_len_to_capture = max_seq_len_to_capture
         self.num_scheduler_steps = num_scheduler_steps
         self.scheduler_delay_factor = scheduler_delay_factor
+        self.schedule_policy = schedule_policy
+        self.schedule_conservativeness = schedule_conservativeness
+        self.stream_interval = stream_interval
         self.attention_backend = attention_backend
-
+        self.sampling_backend = sampling_backend
+        self.enable_torch_compile = enable_torch_compile
     def get_config(self):
         return self.__dict__
         
@@ -67,6 +80,8 @@ def get_config_from_vllm(config: dict, envs: dict):
         max_num_seqs=config.get("max_num_seqs"),
         enable_prefix_cache=config.get("enable_prefix_caching", False),
         enable_chunked_prefill=config.get("enable_chunked_prefill", False),
+        chunked_prefill_size=None,
+        max_prefill_tokens=None,
         disable_sliding_window=config.get("disable_sliding_window", False),
         quantization=config.get("quantization"),
         rope_scaling=config.get("rope_scaling", None),
@@ -74,32 +89,44 @@ def get_config_from_vllm(config: dict, envs: dict):
         max_seq_len_to_capture=config.get("max_seq_len_to_capture"),
         num_scheduler_steps=config.get("num_scheduler_steps"),
         scheduler_delay_factor=config.get("scheduler_delay_factor"),
+        schedule_policy=None,
+        schedule_conservativeness=None,
+        stream_interval=None,
         attention_backend=envs.get("VLLM_ATTENTION_BACKEND"),
+        sampling_backend=None,
+        enable_torch_compile=None,
     )
 
 def get_config_from_sglang(config: dict, envs: dict):
     return EngineConfig(
-        model_name=config.get("model_name"),
-        tensor_parallel_size=config.get("tensor_parallel_size"),
-        pipeline_parallel_size=config.get("pipeline_parallel_size"),
+        model_name=config.get("model_path"),
+        tensor_parallel_size=config.get("tp_size"),
+        pipeline_parallel_size=None,
         kv_cache_dtype=config.get("kv_cache_dtype"),
-        distributed_backend=config.get("distributed_backend"),
-        gpu_memory_utilization=config.get("gpu_memory_utilization"),
-        swap_space=config.get("swap_space"),
-        cpu_kv_cache_size=config.get("cpu_kv_cache_size"),
-        block_size=config.get("block_size"),
-        max_num_batched_tokens=config.get("max_num_batched_tokens"),
-        max_num_seqs=config.get("max_num_seqs"),
-        enable_prefix_cache=config.get("enable_prefix_cache"),
-        enable_chunked_prefill=config.get("enable_chunked_prefill"),
-        disable_sliding_window=config.get("disable_sliding_window"),
+        distributed_backend=None,
+        gpu_memory_utilization=None,
+        swap_space=None,
+        cpu_kv_cache_size=None,
+        block_size=None,
+        max_num_batched_tokens=config.get("max_total_tokens"),
+        max_num_seqs=config.get("max_running_requests"),
+        enable_prefix_cache=True,
+        enable_chunked_prefill=True,
+        chunked_prefill_size=config.get("chunked_prefill_size"),
+        max_prefill_tokens=config.get("max_prefill_tokens"),
+        disable_sliding_window=None,
         quantization=config.get("quantization"),
-        rope_scaling=config.get("rope_scaling"),
-        enforce_eager=config.get("enforce_eager"),
-        max_seq_len_to_capture=config.get("max_seq_len_to_capture"),
-        num_scheduler_steps=config.get("num_scheduler_steps"),
-        scheduler_delay_factor=config.get("scheduler_delay_factor"),
-        attention_backend=envs.get("VLLM_ATTENTION_BACKEND"),
+        rope_scaling=None,
+        enforce_eager=None,
+        max_seq_len_to_capture=None,
+        num_scheduler_steps=config.get("num_continuous_decode_steps"),
+        scheduler_delay_factor=None,
+        schedule_policy=config.get("schedule_policy"),
+        schedule_conservativeness=config.get("schedule_conservativeness"),
+        stream_interval=config.get("stream_interval"),
+        attention_backend=config.get("attention_backend"),
+        sampling_backend=config.get("sampling_backend"),
+        enable_torch_compile=config.get("enable_torch_compile"),
     )
 
 

@@ -128,7 +128,7 @@ def remove_container(container_id: str):
 
 
 def verify_server_status(
-    base_url: str, max_retries: int = 60, retry_interval: int = 30
+    base_url: str, max_retries: int = 10, retry_interval: int = 30
 ) -> bool:
     """Verifies if the server is up and running by checking the API status."""
     url = f"{base_url}/models"

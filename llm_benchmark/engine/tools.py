@@ -48,8 +48,11 @@ def create_engine_summary(engine, engine_config_id, model):
     engine_dir = get_engine_dir(engine_config_id)
     with open(os.path.join(engine_dir, "engine_config.json"), "r") as f:
         config = json.load(f)
-    with open(os.path.join(engine_dir, "engine_envs.json"), "r") as f:
-        envs = json.load(f)
+    try:
+        with open(os.path.join(engine_dir, "engine_envs.json"), "r") as f:
+            envs = json.load(f)
+    except FileNotFoundError:
+        envs = {}
 
     engine_config = get_engine_config(engine, config, envs)
     engine_config = {

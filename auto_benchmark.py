@@ -151,7 +151,7 @@ def create_engine_config(engine_config_file):
 def run_benchmark(args, engine_config, run_config, checkpoint=None):
     checkpoint = checkpoint or {}
     base_url = f"http://localhost:{engine_config['args']['port']}/v1"
-    model = engine_config["args"]["model"]
+    model = engine_config["args"].get("model") or engine_config["args"].get("model-path")
 
     engine_kwargs = {
         "docker_image": args.docker_image,
