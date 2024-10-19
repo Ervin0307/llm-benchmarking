@@ -74,7 +74,7 @@ def get_memory_bandwidth():
         # Extracting bus width and clock speed
         bus_width_match = re.search(r'Width:\s*(\d+)', output)
         clock_speed_match = re.search(r'Speed:\s*(\d+)', output)
-        memory_type_match = re.search(r'Type:\s*(.*)', output)
+        memory_type_match = re.search(r'Type: (DDR[0-9]*)', output)
         
         if memory_type_match:
             memory_type = memory_type_match.group(1)
