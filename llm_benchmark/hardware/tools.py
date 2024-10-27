@@ -22,8 +22,9 @@ def get_device_benchmarks(device):
 
 
 def get_hardware_info(output_dir=None):
-    output_dir = os.path.join(output_dir, "hardware")
-    os.makedirs(output_dir, exist_ok=True)
+    if output_dir:
+        output_dir = os.path.join(output_dir, "hardware")
+        os.makedirs(output_dir, exist_ok=True)
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     devices = get_available_devices()

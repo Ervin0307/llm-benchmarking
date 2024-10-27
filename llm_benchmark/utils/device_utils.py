@@ -6,7 +6,7 @@ import torch
 def get_available_devices():
     devices = ["cpu"]
 
-    if torch.cuda.is_available():
+    if os.system("lspci | grep -i nvidia > /dev/null") == 0 or torch.cuda.is_available():
         devices.append("cuda")
 
     return devices

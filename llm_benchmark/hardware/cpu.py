@@ -31,10 +31,12 @@ def get_numa_info():
 
     return numa_info
 
-def get_memcpy_bandwidth():
+def get_memcpy_bandwidth(numa_count):
     try:
         # Run the command
-        command = ["numactl", "--cpunodebind=0", "--membind=1", "mbw", "1000"]
+        membind_value = 1 if numa_count > 1 else 0
+        command = ["numactl", "--cpunodebind=0", "--membind={}".format(membind_value), "mbw", "1000"]
+        
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
         # Check if the command ran successfully
@@ -103,7 +105,7 @@ def get_memory_bandwidth():
             return bandwidth_gb_per_sec
         else:
             raise Exception("Could not find memory information.")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print("Error executing command:", e)
         return None
 
@@ -240,7 +242,7 @@ def get_cores_and_mem_info(pid: Optional[int] = None, current_only: bool = False
             "threads_per_core": num_virtual_cores / num_physical_cores,
             "numa_count": len(numa_info),
             "numa_cores": "|".join([numa_info[i]["cpus"] for i in range(len(numa_info))]),
-            "memcpy_bandwidth": get_memcpy_bandwidth(),
+            "memcpy_bandwidth": get_memcpy_bandwidth(len(numa_info)),
             "mem_bandwidth_GBs": get_memory_bandwidth(),
         }
     )
