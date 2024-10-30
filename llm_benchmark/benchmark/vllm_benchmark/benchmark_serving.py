@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
+from datasets import load_dataset
+
 import numpy as np
 from .backend_request_func import (
     ASYNC_REQUEST_FUNCS,
@@ -130,6 +132,57 @@ def sample_sharegpt_requests(
         filtered_dataset.append((prompt, prompt_len, output_len))
 
     return filtered_dataset
+
+
+def latest_sharegpt_requests(
+    dataset_path: str,
+    num_requests: int,
+    tokenizer: PreTrainedTokenizerBase,
+    fixed_input_length: Optional[int] = None,
+    fixed_output_len: Optional[int] = None,
+    is_hf: bool = True
+) -> List[Tuple[str, int, int]]:
+    if fixed_input_length < 4:
+        raise ValueError("input_length must be at least 4")
+
+    if is_hf:
+        dataset = load_dataset(dataset_path)["train"]
+    else:
+        with open(dataset_path, 'r') as f:
+            dataset = json.load(f)
+    
+    dataset = [data for data in dataset if len(data["conversations"]) >= 2]
+    
+    dataset = [
+        (data["conversations"][0]["value"], data["conversations"][1]["value"])
+        for data in dataset
+    ]
+
+    random.shuffle(dataset)
+
+    filtered_dataset: List[Tuple[str, int, int]] = []
+    for prompt, completion in dataset:
+        prompt_token_ids = tokenizer(prompt).input_ids
+        prompt_len = len(prompt_token_ids)
+        completion_token_ids = tokenizer(completion).input_ids
+        output_len = (
+            len(completion_token_ids) if fixed_output_len is None else fixed_output_len
+        ) 
+
+        if prompt_len == fixed_input_length:
+            filtered_dataset.append((prompt, prompt_len, output_len))
+        elif prompt_len > fixed_input_length:
+            sliced_prompt = tokenizer.decode(prompt_token_ids[:fixed_input_length], skip_special_tokens=True)
+            filtered_dataset.append((sliced_prompt, fixed_input_length, output_len))
+
+        if len(filtered_dataset) == num_requests:
+            break
+
+    if not filtered_dataset:
+        raise ValueError(f"No samples with input length of {fixed_input_length} found in the dataset.")
+    
+    return filtered_dataset
+
 
 
 def sample_sonnet_requests(
@@ -229,7 +282,8 @@ def sample_random_requests(
         )
         input_requests.append((prompt, int(input_lens[i]), int(output_lens[i])))
 
-    return input_requests
+    return input_requests   
+
 
 
 async def get_request(
@@ -239,7 +293,7 @@ async def get_request(
     input_requests = iter(input_requests)
     for request in input_requests:
         yield request
-
+    
         if request_rate == float("inf"):
             # If the request rate is infinity, then we don't need to wait.
             continue
@@ -363,6 +417,7 @@ async def benchmark(
         best_of=best_of,
         use_beam_search=use_beam_search,
     )
+    print(test_input)
     test_output = await request_func(request_func_input=test_input)
     if not test_output.success:
         raise ValueError(
@@ -550,19 +605,37 @@ def main(args: argparse.Namespace):
             "'--dataset-path' in the future runs.",
             stacklevel=2,
         )
-        input_requests = sample_sharegpt_requests(
-            dataset_path=args.dataset,
-            num_requests=args.num_prompts,
-            tokenizer=tokenizer,
-            fixed_output_len=args.sharegpt_output_len,
-        )
-
-    elif args.dataset_name == "sharegpt":
-        input_requests = sample_sharegpt_requests(
+        # input_requests = sample_sharegpt_requests(
+        #     dataset_path=args.dataset,
+        #     num_requests=args.num_prompts,
+        #     tokenizer=tokenizer,
+        #     fixed_output_len=args.sharegpt_output_len,
+        # )
+        input_requests = latest_sharegpt_requests(
             dataset_path=args.dataset_path,
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
+            fixed_input_length = args.sharegpt_input_len,
             fixed_output_len=args.sharegpt_output_len,
+            is_hf=args.is_hf
+            
+        )
+
+    elif args.dataset_name == "sharegpt":
+        # input_requests = sample_sharegpt_requests(
+        #     dataset_path=args.dataset_path,
+        #     num_requests=args.num_prompts,
+        #     tokenizer=tokenizer,
+        #     fixed_output_len=args.sharegpt_output_len,
+        # )
+        input_requests = latest_sharegpt_requests(
+            dataset_path=args.dataset_path,
+            num_requests=args.num_prompts,
+            tokenizer=tokenizer,
+            fixed_input_length = args.sharegpt_input_len,
+            fixed_output_len=args.sharegpt_output_len,
+            is_hf=args.is_hf
+            
         )
 
     elif args.dataset_name == "sonnet":
@@ -715,6 +788,10 @@ def get_args():
         "--dataset-path", type=str, default=None, help="Path to the dataset."
     )
     parser.add_argument(
+    "--is-hf",action="store_true",help="Set this flag if the provided dataset path is from Hugging Face"
+    )
+
+    parser.add_argument(
         "--model",
         type=str,
         required=True,
@@ -738,6 +815,10 @@ def get_args():
         default=1000,
         help="Number of prompts to process.",
     )
+    parser.add_argument(
+    "--sharegpt-input-len",type=int,default=None,help="Specify the input token length."
+    )
+
     parser.add_argument(
         "--sharegpt-output-len",
         type=int,
@@ -880,6 +961,8 @@ def run_benchmark(model, input_len, output_len, num_prompts, base_url):
             self.dataset = None
             self.dataset_name = "random"
             self.dataset_path = None
+            self.is_hf = False
+            self.sharegpt_input_len = None
             self.sharegpt_output_len = None
             self.sonnet_input_len = 550
             self.sonnet_output_len = 150
