@@ -393,6 +393,7 @@ async def async_request_api_chat_completions(
 
     async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
         assert not request_func_input.use_beam_search
+        
         payload = {
             "model": request_func_input.model,
             "messages": [
