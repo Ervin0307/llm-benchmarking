@@ -134,29 +134,52 @@ def sample_sharegpt_requests(
     return filtered_dataset
 
 
-def latest_sharegpt_requests(
+def sample_requests(
     dataset_path: str,
     num_requests: int,
     tokenizer: PreTrainedTokenizerBase,
     fixed_input_length: Optional[int] = None,
     fixed_output_len: Optional[int] = None,
-    is_hf: bool = True
+    is_hf: bool = True,
+    input_column = str,
+    output_column = Optional[str]
 ) -> List[Tuple[str, int, int]]:
     if fixed_input_length < 4:
         raise ValueError("input_length must be at least 4")
 
     if is_hf:
         dataset = load_dataset(dataset_path)["train"]
+        column_names = dataset.column_names
     else:
         with open(dataset_path, 'r') as f:
             dataset = json.load(f)
+            if isinstance(dataset, list) and len(dataset) > 0:
+                if isinstance(dataset[0], dict):
+                    column_names = dataset[0].keys()
+                else:
+                    raise TypeError("Invalid Data type")
+            else:
+                raise ValueError("Invalid Dataset type")
     
-    dataset = [data for data in dataset if len(data["conversations"]) >= 2]
-    
-    dataset = [
-        (data["conversations"][0]["value"], data["conversations"][1]["value"])
-        for data in dataset
-    ]
+    if input_column not in column_names:
+        raise ValueError(f"Error: '{input_column}' is not a valid input column name.")
+    if output_column is not None and output_column not in column_names:
+        raise ValueError(f"Error: '{output_column}' is not a valid output column name.")
+     
+    if input_column == "conversations":
+        dataset = [data for data in dataset if len(data["conversations"]) >= 2]
+        
+        dataset = [
+            (data["conversations"][0]["value"], data["conversations"][1]["value"])
+            for data in dataset
+        ]
+    else:
+        if output_column is None:
+            raise ValueError("Provide the Output Column")
+        else:
+            dataset = [
+                    (data.get(input_column,""),data.get(output_column,"")) for data in dataset
+                ]
 
     random.shuffle(dataset)
 
@@ -611,14 +634,15 @@ def main(args: argparse.Namespace):
         #     tokenizer=tokenizer,
         #     fixed_output_len=args.sharegpt_output_len,
         # )
-        input_requests = latest_sharegpt_requests(
+        input_requests = sample_requests(
             dataset_path=args.dataset_path,
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
             fixed_input_length = args.sharegpt_input_len,
             fixed_output_len=args.sharegpt_output_len,
-            is_hf=args.is_hf
-            
+            is_hf=args.is_hf,
+            input_column=args.input_column,
+            output_column=args.output_column
         )
 
     elif args.dataset_name == "sharegpt":
@@ -628,13 +652,15 @@ def main(args: argparse.Namespace):
         #     tokenizer=tokenizer,
         #     fixed_output_len=args.sharegpt_output_len,
         # )
-        input_requests = latest_sharegpt_requests(
+        input_requests = sample_requests(
             dataset_path=args.dataset_path,
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
             fixed_input_length = args.sharegpt_input_len,
             fixed_output_len=args.sharegpt_output_len,
-            is_hf=args.is_hf
+            is_hf=args.is_hf,
+            input_column=args.input_column,
+            output_column=args.output_column
             
         )
 
@@ -786,6 +812,12 @@ def get_args():
     )
     parser.add_argument(
         "--dataset-path", type=str, default=None, help="Path to the dataset."
+    )
+    parser.add_argument(
+        "--input-column",type=str,default="input",help="provide the valid input column of the dataset"
+    )
+    parser.add_argument(
+        "--output-column",type=str,default=None,help="provide the valid Output column of the dataset"
     )
     parser.add_argument(
     "--is-hf",action="store_true",help="Set this flag if the provided dataset path is from Hugging Face"
@@ -961,6 +993,8 @@ def run_benchmark(model, input_len, output_len, num_prompts, base_url):
             self.dataset = None
             self.dataset_name = "random"
             self.dataset_path = None
+            self.input_column = "input",
+            self.output_column = None
             self.is_hf = False
             self.sharegpt_input_len = None
             self.sharegpt_output_len = None
