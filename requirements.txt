@@ -13,3 +13,4 @@ tqdm
 pyyaml
 numpy
 transformers
+pandas
