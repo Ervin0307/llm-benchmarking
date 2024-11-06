@@ -110,6 +110,7 @@ def format_vllm_result(result):
     formatted_result["request_throughput"] = result["request_throughput"]
     formatted_result["output_throughput"] = result["output_throughput"]
     formatted_result["total_token_throughput"] = result["total_token_throughput"]
+    formatted_result["output_throughput_per_user"] = result["total_token_throughput"]
     # formatted_result["mean_request_throughput"] = result["mean_request_throughput"]
     formatted_result["mean_ttft_ms"] = result["mean_ttft_ms"]
     formatted_result["p95_ttft_ms"] = result["p95_ttft_ms"]
