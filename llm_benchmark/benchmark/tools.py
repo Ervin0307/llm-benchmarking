@@ -161,19 +161,20 @@ def run_benchmark(
     output_token: int,
     concurrency: int,
     benchmark_script: str,
-    result_dir: str,
-    run_id: str,
+    result_dir: str = None,
+    run_id: str = None,
 ):
     # Set environment variables directly
     os.environ["OPENAI_API_KEY"] = "secret_abcdefg"
     os.environ["OPENAI_API_BASE"] = base_url
 
-    result_dir = os.path.join(result_dir, model.replace("/", "--"))
+    if result_dir is not None:
+        result_dir = os.path.join(result_dir, model.replace("/", "--"))
 
-    traces_dir = f"{result_dir}/profiler_traces/"
-    if os.path.exists(traces_dir):
-        shutil.rmtree(traces_dir)
-    os.makedirs(traces_dir, exist_ok=True)
+        traces_dir = f"{result_dir}/profiler_traces/"
+        if os.path.exists(traces_dir):
+            shutil.rmtree(traces_dir)
+        os.makedirs(traces_dir, exist_ok=True)
 
     print(
         "Running benchmark for model: ",
@@ -199,7 +200,9 @@ def run_benchmark(
         )
         result_output = format_llmperf_result(result_output)
 
-    profiler_stats = get_profiler_result(result_dir)
+    profiler_stats = {}
+    if result_dir is not None:
+        profiler_stats = get_profiler_result(result_dir)
 
     # run_id_dir = os.path.join(result_dir, 'traces', run_id)
     # os.makedirs(run_id_dir, exist_ok=True)

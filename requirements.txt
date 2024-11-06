@@ -6,10 +6,11 @@ psutil
 # Benchamrk & Profiling
 torch
 requests
-#llmperf @ git+https://github.com/ray-project/llmperf.git
+llmperf @ git+https://github.com/BudEcosystem/llmperf.git
 
 # Other
 tqdm
 pyyaml
 numpy
 transformers
+pandas
