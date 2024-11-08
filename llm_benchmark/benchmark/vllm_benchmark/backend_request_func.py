@@ -459,7 +459,7 @@ async def async_request_api_chat_completions(
                     output.generated_text = generated_text
                     output.success = True
                     output.latency = total_request_time
-                    output.e2e_latency = total_request_time
+                    
                     output.output_throughput_user = token_count/latency
                 else:
                     output.error = response.reason or ""
