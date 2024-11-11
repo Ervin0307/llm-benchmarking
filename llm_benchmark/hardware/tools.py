@@ -74,7 +74,13 @@ def get_hardware_info(output_dir=None):
 
     return hw_info
 
-def create_device_config(cpu_only=False):
+def create_device_config(device="cpu"):
 
-    return create_cpu_config() if cpu_only else create_cuda_config()
+    if device == "cuda":
+        return create_cuda_config()
+    elif device == "cpu":
+        return create_cpu_config()
+    else:
+        return create_cpu_config()
+        # raise ValueError(f"Invalid device: {device}")
 
