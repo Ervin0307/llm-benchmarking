@@ -2,9 +2,23 @@ import json
 import sys
 import os
 
+
+
 def main():
+    from llm_benchmark.utils.device_utils import get_available_devices
     from llm_benchmark.hardware import tools as hardware_tools
-    return json.dumps(hardware_tools.get_hardware_info())
+    device_info = []
+    devices = get_available_devices()
+    for device in devices:
+        device_config, dev_info = hardware_tools.create_device_config(device)
+        device_info.append({
+            "name": device_config['name'],
+            "type": device,
+            "device_config": device_config,
+            "device_info": dev_info,
+            "available_count": device_config["available_count"]
+        })
+    return json.dumps(device_info)
 
 
 if __name__ == "__main__":

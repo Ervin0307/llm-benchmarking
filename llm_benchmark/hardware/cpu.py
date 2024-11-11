@@ -96,9 +96,11 @@ def get_memory_bandwidth():
             elif "DDR5" in memory_type:
                 data_rate_multiplier = 32
             else:
-                raise Exception("Unsupported memory type")
+                data_rate_multiplier = 2
+                # raise Exception("Unsupported memory type")
         else:
-            raise Exception("Could not find memory type")
+            data_rate_multiplier = 2
+            # raise Exception("Could not find memory type")
         
         if bus_width_match and clock_speed_match:
             bus_width_bits = int(bus_width_match.group(1))
@@ -300,7 +302,7 @@ def create_cpu_config():
     dev_info = get_cpu_info()
     
     device_config = {}
-    device_config["name"] = "a10-pcie-28gb"
+    device_config["name"] = dev_info['model_name']
     device_config["mem_per_GPU_in_GB"] = dev_info["cpu_memory_total"] / dev_info["numa_count"]
     device_config["hbm_bandwidth_in_GB_per_sec"] = dev_info["mem_bandwidth_GBs"]
     device_config["intra_node_bandwidth_in_GB_per_sec"] = dev_info["memcpy_bandwidth"]
@@ -309,5 +311,6 @@ def create_cpu_config():
     device_config["peak_i8_TFLOPS"] = 250
     device_config["peak_i4_TFLOPS"] = 500
     device_config["inter_node_bandwidth_in_GB_per_sec"] = 200
+    device_config["available_count"] = dev_info["num_virtual_cores"]
     
-    return device_config
+    return device_config, dev_info
