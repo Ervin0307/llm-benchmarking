@@ -11,6 +11,7 @@ def main():
     devices = get_available_devices()
     for device in devices:
         device_config, dev_info = hardware_tools.create_device_config(device)
+        device_config["type"] = device
         device_info.append({
             "name": device_config['name'],
             "type": device,
