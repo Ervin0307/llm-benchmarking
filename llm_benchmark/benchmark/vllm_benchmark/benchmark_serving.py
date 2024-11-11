@@ -134,77 +134,101 @@ def sample_sharegpt_requests(
     return filtered_dataset
 
 
+def sample_random_positive_int(mean: int, stddev: int) -> int:
+    ret = -1
+    while ret <= 0:
+        ret = int(random.gauss(mean, stddev))
+    return ret
+
+
 def sample_requests(
     dataset_path: str,
     num_requests: int,
     tokenizer: PreTrainedTokenizerBase,
-    fixed_input_length: Optional[int] = None,
     fixed_output_len: Optional[int] = None,
     is_hf: bool = True,
-    input_column = str,
-    output_column = Optional[str]
+    input_column: str = "input",
+    output_column: Optional[str] = None,
+    mean_input_len: Optional[int] = None,
+    stddev_input_len: Optional[int] = None
 ) -> List[Tuple[str, int, int]]:
-    if fixed_input_length < 4:
+    if mean_input_len is not None and mean_input_len < 4:
         raise ValueError("input_length must be at least 4")
 
-    if is_hf:
-        dataset = load_dataset(dataset_path)["train"]
-        column_names = dataset.column_names
-    else:
-        with open(dataset_path, 'r') as f:
-            dataset = json.load(f)
-            if isinstance(dataset, list) and len(dataset) > 0:
-                if isinstance(dataset[0], dict):
-                    column_names = dataset[0].keys()
+    try:
+        if is_hf:
+            dataset = load_dataset(dataset_path)["train"]
+            column_names = dataset.column_names
+        else:
+            with open(dataset_path, 'r') as f:
+                dataset = json.load(f)
+                if isinstance(dataset, list) and len(dataset) > 0:
+                    if isinstance(dataset[0], dict):
+                        column_names = dataset[0].keys()
+                    else:
+                        raise TypeError("Invalid data format: expected list of dicts.")
                 else:
-                    raise TypeError("Invalid Data type")
-            else:
-                raise ValueError("Invalid Dataset type")
-    
+                    raise ValueError("Invalid dataset type: expected non-empty list.")
+    except Exception as e:
+        raise ValueError(f"Failed to load dataset: {e}")
+
     if input_column not in column_names:
-        raise ValueError(f"Error: '{input_column}' is not a valid input column name.")
+        raise ValueError(f"'{input_column}' is not a valid input column name.")
     if output_column is not None and output_column not in column_names:
-        raise ValueError(f"Error: '{output_column}' is not a valid output column name.")
-     
+        raise ValueError(f"'{output_column}' is not a valid output column name.")
+
     if input_column == "conversations":
-        dataset = [data for data in dataset if len(data["conversations"]) >= 2]
-        
-        dataset = [
-            (data["conversations"][0]["value"], data["conversations"][1]["value"])
-            for data in dataset
-        ]
+        try:
+            dataset = [data for data in dataset if len(data["conversations"]) >= 2]
+            dataset = [
+                (data["conversations"][0]["value"], data["conversations"][1]["value"])
+                for data in dataset
+            ]
+        except (KeyError, IndexError, TypeError) as e:
+            raise ValueError(f"Error processing conversations column: {e}")
     else:
         if output_column is None:
             raise ValueError("Provide the Output Column")
         else:
             dataset = [
-                    (data.get(input_column,""),data.get(output_column,"")) for data in dataset
-                ]
+                (data.get(input_column, ""), data.get(output_column, ""))
+                for data in dataset
+            ]
 
     random.shuffle(dataset)
-
     filtered_dataset: List[Tuple[str, int, int]] = []
+
     for prompt, completion in dataset:
-        prompt_token_ids = tokenizer(prompt).input_ids
-        prompt_len = len(prompt_token_ids)
-        completion_token_ids = tokenizer(completion).input_ids
-        output_len = (
-            len(completion_token_ids) if fixed_output_len is None else fixed_output_len
-        ) 
+        try:
+            prompt_token_ids = tokenizer(prompt).input_ids
+            prompt_len = len(prompt_token_ids)
+            completion_token_ids = tokenizer(completion).input_ids
+            output_len = len(completion_token_ids) if fixed_output_len is None else fixed_output_len
 
-        if prompt_len == fixed_input_length:
-            filtered_dataset.append((prompt, prompt_len, output_len))
-        elif prompt_len > fixed_input_length:
-            sliced_prompt = tokenizer.decode(prompt_token_ids[:fixed_input_length], skip_special_tokens=True)
-            filtered_dataset.append((sliced_prompt, fixed_input_length, output_len))
+            random_length = sample_random_positive_int(mean_input_len, stddev_input_len)
 
-        if len(filtered_dataset) == num_requests:
-            break
+            if prompt_len == random_length:
+                filtered_dataset.append((prompt, prompt_len, output_len))
+            elif prompt_len > random_length:
+                sliced_prompt = tokenizer.decode(
+                    prompt_token_ids[:random_length], skip_special_tokens=True
+                )
+                filtered_dataset.append((sliced_prompt, random_length, output_len))
+
+            if len(filtered_dataset) >= num_requests:
+                break
+        except Exception as e:
+            print(f"Error processing sample: {e}")
+            continue
+
+    while len(filtered_dataset) < num_requests:
+        filtered_dataset.extend(filtered_dataset[:num_requests - len(filtered_dataset)])
 
     if not filtered_dataset:
-        raise ValueError(f"No samples with input length of {fixed_input_length} found in the dataset.")
-    
+        raise ValueError("No samples found in the dataset with the given input length.")
+
     return filtered_dataset
+
 
 
 
@@ -212,65 +236,49 @@ def sample_sonnet_requests(
     dataset_path: str,
     num_requests: int,
     input_len: int,
+    stddev_input_len: int,
     output_len: int,
     prefix_len: int,
     tokenizer: PreTrainedTokenizerBase,
 ) -> List[Tuple[str, str, int, int]]:
-    assert (
-        input_len > prefix_len
-    ), "'args.sonnet-input-len' must be greater than 'args.prefix-input-len'."
+    assert input_len > prefix_len, "'args.sonnet-input-len' must be greater than 'args.prefix-input-len'."
 
-    # Load the dataset.
     with open(dataset_path) as f:
         poem_lines = f.readlines()
 
-    # Tokenize the poem lines.
     poem_token_ids = tokenizer(poem_lines).input_ids
-    average_poem_len = sum(len(token_ids) for token_ids in poem_token_ids) / len(
-        poem_token_ids
-    )
+    average_poem_len = sum(len(token_ids) for token_ids in poem_token_ids) / len(poem_token_ids)
 
-    # Base prefix for all requests.
     base_prompt = "Pick as many lines as you can from these poem lines:\n"
-    base_message = [
-        {
-            "role": "user",
-            "content": base_prompt,
-        }
-    ]
+    base_message = [{"role": "user", "content": base_prompt}]
     base_prompt_formatted = tokenizer.apply_chat_template(
         base_message, add_generation_prompt=True, tokenize=False
     )
     base_prompt_offset = len(tokenizer(base_prompt_formatted).input_ids)
 
-    assert (
-        input_len > base_prompt_offset
-    ), f"Please set 'args.sonnet-input-len' higher than {base_prompt_offset}."
-    num_input_lines = round((input_len - base_prompt_offset) / average_poem_len)
-
-    # First approximately `prefix_len` number of tokens in the
-    # prompt are fixed poem lines.
-    assert (
-        prefix_len > base_prompt_offset
-    ), f"Please set 'args.sonnet-prefix-len' higher than {base_prompt_offset}."
+    assert input_len > base_prompt_offset, f"Please set 'args.sonnet-input-len' higher than {base_prompt_offset}."
+    assert prefix_len > base_prompt_offset, f"Please set 'args.sonnet-prefix-len' higher than {base_prompt_offset}."
 
     num_prefix_lines = round((prefix_len - base_prompt_offset) / average_poem_len)
     prefix_lines = poem_lines[:num_prefix_lines]
 
-    # Sample the rest of lines per request.
-    sampled_requests: List[Tuple[str, int, int]] = []
+    sampled_requests: List[Tuple[str, str, int, int]] = []
     for _ in range(num_requests):
-        sampled_lines = "".join(
-            prefix_lines + random.sample(poem_lines, num_input_lines - num_prefix_lines)
-        )
+        random_len = sample_random_positive_int(input_len, stddev_input_len)
+        num_input_lines = max(0, min(len(poem_lines), round((random_len - base_prompt_offset) / average_poem_len)))
+
+        if num_input_lines < num_prefix_lines:
+            num_input_lines = num_prefix_lines
+
+        try:
+            sampled_lines = "".join(
+                prefix_lines + random.sample(poem_lines, num_input_lines - num_prefix_lines)
+            )
+        except ValueError:
+            sampled_lines = "".join(prefix_lines + poem_lines[:num_input_lines - num_prefix_lines])
 
         prompt = f"{base_prompt}{sampled_lines}"
-        message = [
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ]
+        message = [{"role": "user", "content": prompt}]
         prompt_formatted = tokenizer.apply_chat_template(
             message, add_generation_prompt=True, tokenize=False
         )
@@ -278,6 +286,7 @@ def sample_sonnet_requests(
         sampled_requests.append((prompt, prompt_formatted, prompt_len, output_len))
 
     return sampled_requests
+
 
 
 def sample_random_requests(
@@ -638,14 +647,15 @@ def main(args: argparse.Namespace):
             dataset_path=args.dataset_path,
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
-            fixed_input_length = args.sharegpt_input_len,
-            fixed_output_len=args.sharegpt_output_len,
+            mean_input_len = args.mean_input_len,
+            stddev_input_len=args.std_input_len,
+            fixed_output_len=args.mean_output_len,
             is_hf=args.is_hf,
             input_column=args.input_column,
             output_column=args.output_column
         )
 
-    elif args.dataset_name == "sharegpt":
+    elif args.dataset_name == "hf":
         # input_requests = sample_sharegpt_requests(
         #     dataset_path=args.dataset_path,
         #     num_requests=args.num_prompts,
@@ -656,8 +666,9 @@ def main(args: argparse.Namespace):
             dataset_path=args.dataset_path,
             num_requests=args.num_prompts,
             tokenizer=tokenizer,
-            fixed_input_length = args.sharegpt_input_len,
-            fixed_output_len=args.sharegpt_output_len,
+            mean_input_len = args.mean_input_len,
+            stddev_input_len=args.std_input_len,
+            fixed_output_len=args.mean_output_len,
             is_hf=args.is_hf,
             input_column=args.input_column,
             output_column=args.output_column
@@ -670,8 +681,9 @@ def main(args: argparse.Namespace):
             input_requests = sample_sonnet_requests(
                 dataset_path=args.dataset_path,
                 num_requests=args.num_prompts,
-                input_len=args.sonnet_input_len,
-                output_len=args.sonnet_output_len,
+                input_len=args.mean_input_len,
+                stddev_input_len = args.std_input_len,
+                output_len=args.mean_output_len,
                 prefix_len=args.sonnet_prefix_len,
                 tokenizer=tokenizer,
             )
@@ -686,8 +698,9 @@ def main(args: argparse.Namespace):
             input_requests = sample_sonnet_requests(
                 dataset_path=args.dataset_path,
                 num_requests=args.num_prompts,
-                input_len=args.sonnet_input_len,
-                output_len=args.sonnet_output_len,
+                input_len=args.mean_input_len,
+                stddev_input_len = args.std_input_len,
+                output_len=args.mean_output_len,
                 prefix_len=args.sonnet_prefix_len,
                 tokenizer=tokenizer,
             )
@@ -801,13 +814,13 @@ def get_args():
         "--dataset",
         type=str,
         default=None,
-        help="Path to the ShareGPT dataset, will be deprecated in the " "next release.",
+        help="Path to the dataset, will be deprecated in the " "next release.",
     )
     parser.add_argument(
         "--dataset-name",
         type=str,
-        default="sharegpt",
-        choices=["sharegpt", "sonnet", "random"],
+        default="hf",
+        choices=["hf", "sonnet", "random"],
         help="Name of the dataset to benchmark on.",
     )
     parser.add_argument(
@@ -848,28 +861,31 @@ def get_args():
         help="Number of prompts to process.",
     )
     parser.add_argument(
-    "--sharegpt-input-len",type=int,default=None,help="Specify the input token length."
+    "--mean-input-len",type=int,default=200,help="Specify the mean input token length."
+    )
+    
+    parser.add_argument(
+        "--std-input-len",type=int,default=50,help="The standard deviation of number of tokens to send in the prompt for the request."
     )
 
     parser.add_argument(
-        "--sharegpt-output-len",
+        "--mean-output-len",
         type=int,
-        default=None,
+        default=100,
         help="Output length for each request. Overrides the output length "
-        "from the ShareGPT dataset.",
     )
-    parser.add_argument(
-        "--sonnet-input-len",
-        type=int,
-        default=550,
-        help="Number of input tokens per request, used only for sonnet dataset.",
-    )
-    parser.add_argument(
-        "--sonnet-output-len",
-        type=int,
-        default=150,
-        help="Number of output tokens per request, used only for sonnet dataset.",
-    )
+    # parser.add_argument(
+    #     "--sonnet-input-len",
+    #     type=int,
+    #     default=550,
+    #     help="Number of input tokens per request, used only for sonnet dataset.",
+    # )
+    # parser.add_argument(
+    #     "--sonnet-output-len",
+    #     type=int,
+    #     default=150,
+    #     help="Number of output tokens per request, used only for sonnet dataset.",
+    # )
     parser.add_argument(
         "--sonnet-prefix-len",
         type=int,
@@ -993,13 +1009,14 @@ def run_benchmark(model, input_len, output_len, num_prompts, base_url):
             self.dataset = None
             self.dataset_name = "random"
             self.dataset_path = None
-            self.input_column = "input",
+            self.input_column = "input"
             self.output_column = None
             self.is_hf = False
-            self.sharegpt_input_len = None
-            self.sharegpt_output_len = None
-            self.sonnet_input_len = 550
-            self.sonnet_output_len = 150
+            self.mean_input_len = 200
+            self.std_input_len = 50
+            self.mean_output_len = 100
+            # self.sonnet_input_len = 550
+            # self.sonnet_output_len = 150
             self.sonnet_prefix_len = 200
             self.random_input_len = input_len
             self.random_output_len = output_len
