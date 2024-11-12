@@ -82,6 +82,7 @@ class ModelConfig:
 @dataclass
 class GPUConfig:
     name: str  # GPU config name
+    available_count: int  # number of available GPUs
     mem_per_GPU_in_GB: float  # memory per GPU in GB
     hbm_bandwidth_in_GB_per_sec: float  # GPU HBM bandwidth in GB/s
     intra_node_bandwidth_in_GB_per_sec: float  # intra node GPU bandwidth in GB/s

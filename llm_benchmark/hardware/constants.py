@@ -35,3 +35,25 @@ class DeviceInfo(Enum):
         peak_i4_TFLOPS=1248,
         inter_node_bandwidth_in_GB_per_sec=200
     )
+    HL_225 = GPUInfo(
+        name="HL_225",
+        mem_per_GPU_in_GB=96,
+        hbm_bandwidth_in_GB_per_sec=2450,
+        intra_node_bandwidth_in_GB_per_sec=300,
+        intra_node_min_message_latency=8e-06,
+        peak_fp16_TFLOPS=432,
+        peak_i8_TFLOPS=864,
+        peak_i4_TFLOPS=1728,
+        inter_node_bandwidth_in_GB_per_sec=200
+    )
+    GAUDI2 = GPUInfo(
+        name="GAUDI2",
+        mem_per_GPU_in_GB=96,
+        hbm_bandwidth_in_GB_per_sec=2450,
+        intra_node_bandwidth_in_GB_per_sec=300,
+        intra_node_min_message_latency=8e-06,
+        peak_fp16_TFLOPS=432,
+        peak_i8_TFLOPS=864,
+        peak_i4_TFLOPS=1728,
+        inter_node_bandwidth_in_GB_per_sec=200
+    )
