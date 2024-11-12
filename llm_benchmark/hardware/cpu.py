@@ -72,10 +72,14 @@ def get_memory_bandwidth():
     try:
         try:
             cmd = "sudo dmidecode --type memory"
-            output = subprocess.check_output(cmd, shell=True, text=True)
+            # output = subprocess.check_output(cmd, shell=True, text=True)
+            with open(os.devnull, 'w') as devnull:
+                output = subprocess.run(cmd, stderr=devnull, capture_output=True, text=True)
         except Exception as e:
             cmd = "dmidecode --type memory"
-            output = subprocess.check_output(cmd, shell=True, text=True)
+            # output = subprocess.check_output(cmd, shell=True, text=True)
+            with open(os.devnull, 'w') as devnull:
+                output = subprocess.run(cmd, stderr=devnull, capture_output=True, text=True)
         # Extracting bus width and clock speed
         bus_width_match = re.search(r'Width:\s*(\d+)', output)
         clock_speed_match = re.search(r'Speed:\s*(\d+)', output)
