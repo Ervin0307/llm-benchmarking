@@ -68,15 +68,14 @@ def get_memcpy_bandwidth(numa_count):
 
 def get_memory_bandwidth():
     """Fetch memory information for bus width, clock speed, and data rate multiplier."""
-    
-    try:
-        # Command to get memory information in Linux
-        cmd = "sudo dmidecode --type memory"
-    except Exception as e:
-        cmd = "dmidecode --type memory"
 
     try:
-        output = subprocess.check_output(cmd, shell=True, text=True)
+        try:
+            cmd = "sudo dmidecode --type memory"
+            output = subprocess.check_output(cmd, shell=True, text=True)
+        except Exception as e:
+            cmd = "dmidecode --type memory"
+            output = subprocess.check_output(cmd, shell=True, text=True)
         # Extracting bus width and clock speed
         bus_width_match = re.search(r'Width:\s*(\d+)', output)
         clock_speed_match = re.search(r'Speed:\s*(\d+)', output)
