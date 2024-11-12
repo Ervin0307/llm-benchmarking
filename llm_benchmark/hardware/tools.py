@@ -6,6 +6,8 @@ import datetime
 from .benchmark import flops_benchmark, memory_bandwidth_benchmark
 from .cpu import create_cpu_config, get_cpu_info
 from .cuda import create_cuda_config
+from .hpu import get_hpu_info
+from .hpu import create_hpu_config
 
 from llm_benchmark.utils.device_utils import get_available_devices
 
@@ -40,6 +42,9 @@ def get_hardware_info(output_dir=None):
             device_info, raw_info = get_gpu_info()
             for info in device_info:
                 info.update(get_device_benchmarks(f"{device}:{info['device_id']}"))
+        elif device == "hpu":
+            device_info = create_hpu_config()
+            # device_info.update(get_device_benchmarks(device))
 
         hw_info[device] = device_info
 
@@ -78,8 +83,8 @@ def create_device_config(device="cpu"):
 
     if device == "cuda":
         return create_cuda_config()
-    elif device == "cpu":
-        return create_cpu_config()
+    elif device == "hpu":
+        return create_hpu_config()
     else:
         return create_cpu_config()
         # raise ValueError(f"Invalid device: {device}")
