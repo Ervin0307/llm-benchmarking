@@ -105,12 +105,15 @@ def get_memory_bandwidth():
         if bus_width_match and clock_speed_match:
             bus_width_bits = int(bus_width_match.group(1))
             clock_speed_mhz = int(clock_speed_match.group(1))
-            
-            bandwidth_mb_per_sec = bus_width_bits * clock_speed_mhz * data_rate_multiplier / 8
-            bandwidth_gb_per_sec = bandwidth_mb_per_sec / 1024
-            return bandwidth_gb_per_sec
         else:
-            raise Exception("Could not find memory information.")
+            # Default values
+            bus_width_bits = 64  # Default bus width in bits
+            clock_speed_mhz = 1600  # Default clock speed in MHz
+            print("Using default values for bus width and clock speed.")
+
+        bandwidth_mb_per_sec = bus_width_bits * clock_speed_mhz * data_rate_multiplier / 8
+        bandwidth_gb_per_sec = bandwidth_mb_per_sec / 1024
+        return bandwidth_gb_per_sec
     except Exception as e:
         print("Error executing command:", e)
         return None
