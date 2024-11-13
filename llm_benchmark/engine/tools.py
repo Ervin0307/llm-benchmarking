@@ -35,8 +35,10 @@ def save_engine_config(args):
 def save_engine_envs(envs):
     envs_dict = {}
     for k, v in envs.items():
+        print(k, v())
         envs_dict[k] = v()
     engine_dir = get_engine_dir()
+    print("envs_dict", envs_dict)
     os.makedirs(engine_dir, exist_ok=True)
     with open(os.path.join(engine_dir, "engine_envs.json"), "w") as f:
         json.dump(envs_dict, f, indent=4)
