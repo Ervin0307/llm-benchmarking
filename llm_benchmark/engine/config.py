@@ -31,6 +31,10 @@ class EngineConfig:
         attention_backend: str = "flash_attn", # flash_attn, flash_infer, torch_sdpa
         sampling_backend: str = "flashinfer", # "flashinfer", "pytorch"
         enable_torch_compile: bool = False,
+        hpu_prompt_bs: tuple = None, # (min, max, step)
+        hpu_decode_bs: tuple = None, # (min, max, step)
+        hpu_prompt_seq: tuple = None, # (min, max, step)
+        hpu_decode_block: tuple = None, # (min, max, step)
     ):
 
         self.model_name = model_name
@@ -61,11 +65,28 @@ class EngineConfig:
         self.attention_backend = attention_backend
         self.sampling_backend = sampling_backend
         self.enable_torch_compile = enable_torch_compile
+        self.hpu_prompt_bs = hpu_prompt_bs
+        self.hpu_decode_bs = hpu_decode_bs
+        self.hpu_prompt_seq = hpu_prompt_seq
+        self.hpu_decode_block = hpu_decode_block
+        
     def get_config(self):
         return self.__dict__
         
         
 def get_config_from_vllm(config: dict, envs: dict):
+    hpu_prompt_bs = (envs.get("VLLM_PROMPT_BS_BUCKET_MIN", None),
+                     envs.get("VLLM_PROMPT_BS_BUCKET_MAX", None),
+                     envs.get("VLLM_PROMPT_BS_BUCKET_STEP", None))
+    hpu_decode_bs = (envs.get("VLLM_DECODE_BS_BUCKET_MIN", None),
+                     envs.get("VLLM_DECODE_BS_BUCKET_MAX", None),
+                     envs.get("VLLM_DECODE_BS_BUCKET_STEP", None))
+    hpu_prompt_seq = (envs.get("VLLM_PROMPT_SEQ_BUCKET_MIN", None),
+                      envs.get("VLLM_PROMPT_SEQ_BUCKET_MAX", None),
+                      envs.get("VLLM_PROMPT_SEQ_BUCKET_STEP", None))
+    hpu_decode_block = (envs.get("VLLM_DECODE_BLOCK_BUCKET_MIN", None),
+                         envs.get("VLLM_DECODE_BLOCK_BUCKET_MAX", None),
+                         envs.get("VLLM_DECODE_BLOCK_BUCKET_STEP", None))
     return EngineConfig(
         model_name=config.get("model"),
         tensor_parallel_size=config.get("tensor_parallel_size"),
@@ -95,6 +116,10 @@ def get_config_from_vllm(config: dict, envs: dict):
         attention_backend=envs.get("VLLM_ATTENTION_BACKEND"),
         sampling_backend=None,
         enable_torch_compile=None,
+        hpu_prompt_bs=hpu_prompt_bs,
+        hpu_decode_bs=hpu_decode_bs,
+        hpu_prompt_seq=hpu_prompt_seq,
+        hpu_decode_block=hpu_decode_block,
     )
 
 def get_config_from_sglang(config: dict, envs: dict):
@@ -127,6 +152,10 @@ def get_config_from_sglang(config: dict, envs: dict):
         attention_backend=config.get("attention_backend"),
         sampling_backend=config.get("sampling_backend"),
         enable_torch_compile=config.get("enable_torch_compile"),
+        hpu_prompt_bs=None,
+        hpu_decode_bs=None,
+        hpu_prompt_seq=None,
+        hpu_decode_block=None,
     )
 
 
