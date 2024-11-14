@@ -259,7 +259,6 @@ def calculate_metrics(
     outputs: List[RequestFuncOutput],
     dur_s: float,
     tokenizer: PreTrainedTokenizerBase,
-    selected_percentile_metrics: List[str],
     selected_percentiles: List[float],
 ) -> Tuple[BenchmarkMetrics, List[int]]:
     actual_output_lens: List[int] = []
@@ -271,7 +270,7 @@ def calculate_metrics(
     ttfts: List[float] = []
     e2els: List[float] = []
     request_duration:List[float] = []
-    output_throughput_req: List[float] = []
+    reqs_output_throughputs: List[float] = []
     for i in range(len(outputs)):
         if outputs[i].success:
             # We use the tokenizer to count the number of output tokens for all
@@ -288,9 +287,9 @@ def calculate_metrics(
             itls += outputs[i].itl
             ttfts.append(outputs[i].ttft)
             e2els.append(outputs[i].latency)
-            request_duration.append(outputs[i].e2e_latency)
+            request_duration.append(outputs[i].latency)
             total_request_throughput += output_len / outputs[i].latency
-            output_throughput_req.append(outputs[i].output_throughput_user)
+            reqs_output_throughputs.append(outputs[i].req_output_throughput)
             completed += 1
 
         else:
@@ -302,6 +301,7 @@ def calculate_metrics(
             "on the benchmark arguments.",
             stacklevel=2,
         )
+        
     metrics = BenchmarkMetrics(
         completed=completed,
         total_input=total_input,
@@ -310,11 +310,11 @@ def calculate_metrics(
         output_throughput=sum(actual_output_lens) / dur_s,
         total_token_throughput=(total_input + sum(actual_output_lens)) / dur_s,
         mean_request_throughput=total_request_throughput / completed,
-        mean_otpr_ts = np.mean(output_throughput_req or 0),
-        std_otpr_ts = np.std(output_throughput_req or 0),
-        median_otpr_ts = np.median(output_throughput_req,0),
+        mean_otpr_ts = np.mean(reqs_output_throughputs or 0),
+        std_otpr_ts = np.std(reqs_output_throughputs or 0),
+        median_otpr_ts = np.median(reqs_output_throughputs,0),
         percentiles_otpr_ts=[
-            (p, np.percentile(output_throughput_req or 0, p)) for p in selected_percentiles
+            (p, np.percentile(reqs_output_throughputs or 0, p)) for p in selected_percentiles
         ],
         mean_ttft_ms=np.mean(ttfts or 0)
         * 1000,  # ttfts is empty if streaming is not supported by backend
@@ -342,7 +342,6 @@ def calculate_metrics(
             (p, np.percentile(e2els or 0, p) * 1000) for p in selected_percentiles
         ],
     )
-    print(f"\n requtest durations:\n {request_duration}")
     return metrics, actual_output_lens
 
 
@@ -358,7 +357,6 @@ async def benchmark(
     request_rate: float,
     disable_tqdm: bool,
     profile: bool,
-    selected_percentile_metrics: List[str],
     selected_percentiles: List[str],
 ):
     if backend in ASYNC_REQUEST_FUNCS:
@@ -451,7 +449,6 @@ async def benchmark(
         outputs=outputs,
         dur_s=benchmark_duration,
         tokenizer=tokenizer,
-        selected_percentile_metrics=selected_percentile_metrics,
         selected_percentiles=selected_percentiles,
     )
 
@@ -483,7 +480,7 @@ async def benchmark(
         "total_output_tokens": metrics.total_output,
         "request_throughput": metrics.request_throughput,
         "output_throughput": metrics.output_throughput,
-        "otpr":[output.output_throughput_user for output in outputs],
+        "otpr":[output.req_output_throughput for output in outputs],
         "total_token_throughput": metrics.total_token_throughput,
         "input_lens": [output.prompt_len for output in outputs],
         "output_lens": actual_output_lens,
@@ -504,8 +501,6 @@ async def benchmark(
     ):
         # This function print and add statistics of the specified
         # metric.
-        if metric_attribute_name not in selected_percentile_metrics:
-            return
         if metric_attribute_name == "otpr":
             print("{s:{c}^{n}}".format(s=metric_header, n=50, c="-"))
             print(
@@ -669,7 +664,6 @@ def main(args: argparse.Namespace):
             request_rate=args.request_rate,
             disable_tqdm=args.disable_tqdm,
             profile=args.profile,
-            selected_percentile_metrics=args.percentile_metrics.split(","),
             selected_percentiles=[float(p) for p in args.metric_percentiles.split(",")],
         )
     )
@@ -884,15 +878,15 @@ def get_args():
         "{backend}-{args.request_rate}qps-{base_model_id}-{current_dt}.json"
         " format.",
     )
-    parser.add_argument(
-        "--percentile-metrics",
-        type=str,
-        default="ttft,tpot,itl,e2el",
-        help="Comma-seperated list of selected metrics to report percentils. "
-        "This argument specifies the metrics to report percentiles. "
-        'Allowed metric names are "ttft", "tpot", "itl", "e2el".,"otpr '
-        'Default value is "ttft,tpot,itl".',
-    )
+    # parser.add_argument(
+    #     "--percentile-metrics",
+    #     type=str,
+    #     default="ttft,tpot,itl,e2el",
+    #     help="Comma-seperated list of selected metrics to report percentils. "
+    #     "This argument specifies the metrics to report percentiles. "
+    #     'Allowed metric names are "ttft", "tpot", "itl", "e2el(End to End Latency)".,"otpr(Output Throughput per request) '
+    #     'Default value is "ttft,tpot,itl".',
+    # )
     parser.add_argument(
         "--metric-percentiles",
         type=str,
