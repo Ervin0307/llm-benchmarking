@@ -158,7 +158,7 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
         "env_values": engine_config["envs"] if engine_config else [],
         "result_dir": os.environ["PROFILER_RESULT_DIR"],
         "extra_args": engine_config["args"] if engine_config else [],
-        "cpu_only": args.cpu_only,
+        "device": args.device,
         "profile_model": args.profile_model,
     }
     engine_config_hash = hashlib.sha1(
@@ -205,6 +205,9 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
     log_metrics_task = None
     stop_event = None
     results = []
+
+    device_config, _ = hardware_tools.create_device_config(args.device)
+
     try:
         configs = create_config(run_config)
         for config in tqdm(configs, desc="Running benchmarks"):
@@ -270,7 +273,7 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
 
             model_analysis = model_tools.infer(
                 model_name=model, 
-                device_config=hardware_tools.create_device_config(args.cpu_only),
+                device_config=device_config,
                 seq_len=config["input_tokens"], 
                 num_tokens_to_generate=config["output_tokens"], 
                 batch_size_per_gpu=config["concurrency"],
@@ -400,6 +403,13 @@ if __name__ == "__main__":
         "--profile-collectives",
         action="store_true",
         help="Whether to profile the collectives.",
+    )
+    args.add_argument(
+        "--device",
+        type=str,
+        default="gpu",
+        choices=["gpu", "cpu", "hpu"],
+        help="Whether to profile on gpu or cpu.",
     )
     args.add_argument(
         "--cpu-only",

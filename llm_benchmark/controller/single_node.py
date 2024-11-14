@@ -10,7 +10,7 @@ def build_docker_run_command(
     result_dir: str,
     extra_args: list,
     engine_config_id: str,
-    cpu_only: bool = False,
+    device: str = "cpu",
     profile_model: bool = False,
 ) -> list:
     """Constructs the docker run command."""
@@ -46,8 +46,10 @@ def build_docker_run_command(
         "--network=host",
     ]
 
-    if not cpu_only:
+    if device == "gpu":
         docker_command.append("--gpus=all")
+    elif device == "hpu":
+        docker_command.append("--runtime=habana")
 
     docker_command.extend(
         [
@@ -69,7 +71,7 @@ def deploy_model(
     engine_config_id: str,
     port: int,
     warmup_sec: int = 30,
-    cpu_only: bool = False,
+    device: str = "cpu",
     profile_model: bool = False,
 ) -> str:
     try:
@@ -79,7 +81,7 @@ def deploy_model(
             result_dir,
             extra_args,
             engine_config_id,
-            cpu_only,
+            device,
             profile_model,
         )
         print(f"Deploying with Docker image {docker_image}...")
@@ -105,7 +107,7 @@ def deploy_model(
         # Wait for the container to initialize
         time.sleep(warmup_sec)
 
-        if not verify_server_status(f"http://localhost:{port}/v1"):
+        if not verify_server_status(container_id, f"http://localhost:{port}/v1"):
             raise RuntimeError("Server failed to start after maximum retries.")
 
         print(f"Container {container_id} is now running.")
@@ -126,14 +128,38 @@ def remove_container(container_id: str):
         print(f"Failed to remove container {container_id}. Docker error: {e.stderr}")
         raise
 
+def verify_container_status(container_id: str):
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "--format='{{.State.Running}}'", container_id],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        is_running = result.stdout.strip().strip("'").strip('"') == "true"
+        if is_running:
+            print(f"Container {container_id} is running.")
+        else:
+            print(f"Container {container_id} is not running.")
+        return is_running
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to check status of container {container_id}. Docker error: {e.stderr}")
+        raise
 
 def verify_server_status(
-    base_url: str, max_retries: int = 10, retry_interval: int = 30
+    container_id: str, base_url: str, max_retries: int = 100, retry_interval: int = 60
 ) -> bool:
     """Verifies if the server is up and running by checking the API status."""
     url = f"{base_url}/models"
 
     for attempt in range(max_retries):
+        try:
+            if not verify_container_status(container_id):
+                print(f"Container {container_id} is not running. Exiting.")
+                return False
+        except Exception as e:
+            print(f"Error verifying container status: {e}")
+            return False
         try:
             response = requests.get(url)
 

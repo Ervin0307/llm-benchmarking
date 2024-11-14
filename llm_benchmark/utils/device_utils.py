@@ -9,6 +9,9 @@ def get_available_devices():
     if os.system("lspci | grep -i nvidia > /dev/null") == 0 or torch.cuda.is_available():
         devices.append("cuda")
 
+    if os.system("lspci | grep -i habana > /dev/null") == 0:
+        devices.append("hpu")
+
     return devices
 
 

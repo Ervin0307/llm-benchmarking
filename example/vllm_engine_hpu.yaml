@@ -1,0 +1,93 @@
+args:
+  model: 
+    - Qwen/Qwen2.5-1.5B-Instruct
+    # - meta-llama/Meta-Llama-3.1-8B-Instruct
+  port: 8989
+  tensor-parallel-size:
+    - 1
+    # - 2
+  block-size:
+    - 128
+    - 64
+  # distributed-executor-backend: mp
+  # swap-space:
+  #   - 4
+  #   - 16
+  max-num-seqs:
+    - 128
+    - 256
+  # max-num-batched-tokens:
+  #   - 8192
+  #   - 16384
+  # rope-scaling: 
+  #   - '{"rope_type":"llama3","factor":1.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
+  #   - '{"rope_type":"llama3","factor":2.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
+  # num-scheduler-steps:
+  #   - 1
+  #   - 2
+    # - 4
+  scheduler-delay-factor:
+    - 0.0
+    - 0.5
+    - 1.0
+  # max-model-len: 8192
+  # gpu-memory-utilization: 0.9
+  # max-seq-len-to-capture:
+  #   - 1024
+  #   - 8192
+  enable-prefix-caching: 
+    - true
+    - false
+  enable-chunked-prefill:
+    - true
+    - false
+  # kv-cache-dtype:
+  #   - auto
+  #   - fp8_e4m3
+  #   - fp8_e5m2
+  # enforce-eager:
+  #   - true
+  #   - false
+envs:
+  # VLLM_ATTENTION_BACKEND:
+  #   - XFORMERS
+  #   - FLASH_ATTN
+  #   - FLASHINFER
+  # PT_HPU_LAZY_MODE:
+  #   - 0
+  #   - 1
+  HABANA_VISIBLE_DEVICES: all
+  OMPI_MCA_btl_vader_single_copy_mechanism: none
+  VLLM_PROMPT_BS_BUCKET_MIN: 1
+  VLLM_PROMPT_BS_BUCKET_STEP: 32
+  VLLM_PROMPT_BS_BUCKET_MAX: 64
+  VLLM_DECODE_BS_BUCKET_MIN: 1
+  VLLM_DECODE_BS_BUCKET_STEP: 32
+  VLLM_DECODE_BS_BUCKET_MAX: 128
+  VLLM_PROMPT_SEQ_BUCKET_MIN: 64
+  VLLM_PROMPT_SEQ_BUCKET_STEP: 512
+  VLLM_PROMPT_SEQ_BUCKET_MAX: 2048
+  VLLM_DECODE_BLOCK_BUCKET_MIN: 128
+  VLLM_DECODE_BLOCK_BUCKET_STEP: 128
+  VLLM_DECODE_BLOCK_BUCKET_MAX: 1536
+
+run_config:
+  mean_input_tokens:
+    - 50
+    - 200
+    - 550
+    - 1000
+    - 2000
+  mean_output_tokens:
+    - 128
+    - 250
+    - 550
+    - 1000
+    - 1500
+  num_concurrent_requests: 
+    - 1
+    - 10
+    - 50
+    - 100
+    - 200
+    - 500
