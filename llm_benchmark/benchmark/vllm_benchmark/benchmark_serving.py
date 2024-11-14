@@ -145,21 +145,21 @@ def sample_requests(
     dataset_path: str,
     num_requests: int,
     tokenizer: PreTrainedTokenizerBase,
-    fixed_output_len: Optional[int] = None,
-    is_hf: bool = True,
+    mean_input_len: int,
+    seed:int,
+    fixed_output_len: int,
     input_column: str = "input",
     output_column: Optional[str] = None,
-    mean_input_len: Optional[int] = None,
-    stddev_input_len: Optional[int] = None
+    stddev_input_len: int = None,
 ) -> List[Tuple[str, int, int]]:
     if mean_input_len is not None and mean_input_len < 4:
-        raise ValueError("input_length must be at least 4")
+        raise ValueError("mean_input_len must be at least 4")
+    
+    if stddev_input_len is None:
+        stddev_input_len = 0.1*(mean_input_len)
 
     try:
-        if is_hf:
-            dataset = load_dataset(dataset_path)["train"]
-            column_names = dataset.column_names
-        else:
+        if os.path.isfile(dataset_path):
             with open(dataset_path, 'r') as f:
                 dataset = json.load(f)
                 if isinstance(dataset, list) and len(dataset) > 0:
@@ -169,6 +169,9 @@ def sample_requests(
                         raise TypeError("Invalid data format: expected list of dicts.")
                 else:
                     raise ValueError("Invalid dataset type: expected non-empty list.")
+        else:
+            dataset = load_dataset(dataset_path)["train"]
+            column_names = dataset.column_names
     except Exception as e:
         raise ValueError(f"Failed to load dataset: {e}")
 
@@ -194,7 +197,8 @@ def sample_requests(
                 (data.get(input_column, ""), data.get(output_column, ""))
                 for data in dataset
             ]
-
+            
+    random.seed(seed)
     random.shuffle(dataset)
     filtered_dataset: List[Tuple[str, int, int]] = []
 
@@ -236,10 +240,10 @@ def sample_sonnet_requests(
     dataset_path: str,
     num_requests: int,
     input_len: int,
-    stddev_input_len: int,
     output_len: int,
     prefix_len: int,
     tokenizer: PreTrainedTokenizerBase,
+    stddev_input_len: Optional[int]=None
 ) -> List[Tuple[str, str, int, int]]:
     assert input_len > prefix_len, "'args.sonnet-input-len' must be greater than 'args.prefix-input-len'."
 
@@ -650,9 +654,9 @@ def main(args: argparse.Namespace):
             mean_input_len = args.mean_input_len,
             stddev_input_len=args.std_input_len,
             fixed_output_len=args.mean_output_len,
-            is_hf=args.is_hf,
             input_column=args.input_column,
-            output_column=args.output_column
+            output_column=args.output_column,
+            seed=args.seed
         )
 
     elif args.dataset_name == "hf":
@@ -669,9 +673,9 @@ def main(args: argparse.Namespace):
             mean_input_len = args.mean_input_len,
             stddev_input_len=args.std_input_len,
             fixed_output_len=args.mean_output_len,
-            is_hf=args.is_hf,
             input_column=args.input_column,
-            output_column=args.output_column
+            output_column=args.output_column,
+            seed=args.seed
             
         )
 
@@ -832,9 +836,6 @@ def get_args():
     parser.add_argument(
         "--output-column",type=str,default=None,help="provide the valid Output column of the dataset"
     )
-    parser.add_argument(
-    "--is-hf",action="store_true",help="Set this flag if the provided dataset path is from Hugging Face"
-    )
 
     parser.add_argument(
         "--model",
@@ -865,7 +866,7 @@ def get_args():
     )
     
     parser.add_argument(
-        "--std-input-len",type=int,default=50,help="The standard deviation of number of tokens to send in the prompt for the request."
+        "--std-input-len",type=int,default=None,help="The standard deviation of number of tokens to send in the prompt for the request."
     )
 
     parser.add_argument(
@@ -990,10 +991,10 @@ def get_args():
     return args
 
 
-def run_benchmark(model, input_len, output_len, num_prompts, base_url):
+def run_benchmark(model, input_len,std_input_len, output_len, num_prompts, base_url):
     # args = get_args()
     class BenchmarkArgs:
-        def __init__(self, model, input_len, output_len, num_prompts, base_url):
+        def __init__(self, model, input_len, std_input_len,output_len, num_prompts, base_url):
             self.model = model
             self.tokenizer = model
             self.num_prompts = num_prompts
@@ -1011,9 +1012,8 @@ def run_benchmark(model, input_len, output_len, num_prompts, base_url):
             self.dataset_path = None
             self.input_column = "input"
             self.output_column = None
-            self.is_hf = False
             self.mean_input_len = 200
-            self.std_input_len = 50
+            self.std_input_len = None
             self.mean_output_len = 100
             # self.sonnet_input_len = 550
             # self.sonnet_output_len = 150
@@ -1029,7 +1029,7 @@ def run_benchmark(model, input_len, output_len, num_prompts, base_url):
             self.result_dir = "./results"
             self.result_filename = None
 
-    args = BenchmarkArgs(model, input_len, output_len, num_prompts, base_url)
+    args = BenchmarkArgs(model, input_len,std_input_len,output_len, num_prompts, base_url)
 
     return main(args)
 
