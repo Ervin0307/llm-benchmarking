@@ -14,6 +14,7 @@ except ImportError:
 
 from . import cuda as cuda_utils
 from . import cpu as cpu_utils
+from . import hpu as hpu_utils
 from llm_benchmark.utils.device_utils import get_available_devices
 
 
@@ -41,6 +42,16 @@ def get_gpu_usage(pid: int = None):
 
     return {metric: ",".join(map(str, gpu_metrics[metric])) for metric in gpu_metrics}
 
+
+def get_hpu_usage(pid: int = None):
+    info = hpu_utils.get_hpu_info(current_only=True)
+    hpu_metrics = {}
+    for device in info:
+        for key in device:
+            if key not in hpu_metrics:
+                hpu_metrics[key] = []
+            hpu_metrics[key].append(device[key])
+    return {metric: ",".join(map(str, hpu_metrics[metric])) for metric in hpu_metrics}
 
 def log_system_metrics(
     output_dir: str,
@@ -81,6 +92,9 @@ def log_system_metrics(
             metrics.update(cpu_usage_info)
             if is_gpu_available:
                 metrics.update(get_gpu_usage(pid) or {})
+            
+            if "hpu" in available_devices:
+                metrics.update(get_hpu_usage(pid) or {})
 
             file_exists = os.path.isfile(output_file)
             with open(output_file, "a") as fp:
