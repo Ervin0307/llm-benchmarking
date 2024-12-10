@@ -276,12 +276,12 @@ def get_temp_and_power_info(current_only: bool = False):
 
 
 def get_cpu_info():
-    cpu_info = subprocess.check_output(["lscpu"], text=True)
-    if "Intel" in cpu_info:
-        print("CPU is Intel")
-    else:
-        print("CPU is not Intel")
-        return {}
+    # cpu_info = subprocess.check_output(["lscpu"], text=True)
+    # if "Intel" in cpu_info:
+    #     print("CPU is Intel")
+    # else:
+    #     print("CPU is not Intel")
+    #     return {}
     
     info = get_cores_and_mem_info()
     info.update(get_temp_and_power_info())
