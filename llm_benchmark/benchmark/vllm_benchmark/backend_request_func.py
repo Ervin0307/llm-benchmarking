@@ -422,10 +422,9 @@ async def async_request_api_chat_completions(
         headers = {"Content-Type": "application/json"}
         budserve_api_key = os.environ.get('BUDSERVE_API_KEY')
         openai_api_key = os.environ.get('OPENAI_API_KEY')
-        print(openai_api_key)
 
-        if budserve_api_key!="" and openai_api_key!="":
-            print("Warning: Both BUDSERVE_API_KEY and OPENAI_API_KEY are set. Using BUDSERVE_API_KEY.")
+        # if budserve_api_key!="" and openai_api_key!="":
+        #     print("Warning: Both BUDSERVE_API_KEY and OPENAI_API_KEY are set. Using BUDSERVE_API_KEY.")
         
         if budserve_api_key:
             headers["Authorization"] = f"Bearer {budserve_api_key}"

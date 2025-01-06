@@ -63,10 +63,10 @@ class BenchmarkMetrics:
     output_throughput: float
     total_token_throughput: float
     mean_request_throughput: float
-    mean_otpr_ts: float
-    median_otpr_ts: float
-    std_otpr_ts: float
-    percentiles_otpr_ts: List[Tuple[float, float]]
+    mean_output_throughput_per_user: float
+    median_output_throughput_per_user: float
+    std_output_throughput_per_user: float
+    percentiles_output_throughput_per_user: List[Tuple[float, float]]
     mean_ttft_ms: float
     median_ttft_ms: float
     std_ttft_ms: float
@@ -309,11 +309,11 @@ def calculate_metrics(
         request_throughput=completed / dur_s,
         output_throughput=sum(actual_output_lens) / dur_s,
         total_token_throughput=(total_input + sum(actual_output_lens)) / dur_s,
-        mean_request_throughput=total_request_throughput / completed,
-        mean_otpr_ts = np.mean(reqs_output_throughputs or 0),
-        std_otpr_ts = np.std(reqs_output_throughputs or 0),
-        median_otpr_ts = np.median(reqs_output_throughputs,0),
-        percentiles_otpr_ts=[
+        mean_request_throughput=total_request_throughput / completed if completed > 0 else 0,
+        mean_output_throughput_per_user = np.mean(reqs_output_throughputs or 0),
+        std_output_throughput_per_user = np.std(reqs_output_throughputs or 0),
+        median_output_throughput_per_user = np.median(reqs_output_throughputs,0),
+        percentiles_output_throughput_per_user=[
             (p, np.percentile(reqs_output_throughputs or 0, p)) for p in selected_percentiles
         ],
         mean_ttft_ms=np.mean(ttfts or 0)
@@ -375,7 +375,7 @@ async def benchmark(
         best_of=best_of,
         use_beam_search=use_beam_search,
     )
-    print(test_input)
+    
     test_output = await request_func(request_func_input=test_input)
     if not test_output.success:
         raise ValueError(
@@ -480,7 +480,7 @@ async def benchmark(
         "total_output_tokens": metrics.total_output,
         "request_throughput": metrics.request_throughput,
         "output_throughput": metrics.output_throughput,
-        "otpr":[output.req_output_throughput for output in outputs],
+        "output_throughput_per_user":[output.req_output_throughput for output in outputs],
         "total_token_throughput": metrics.total_token_throughput,
         "input_lens": [output.prompt_len for output in outputs],
         "output_lens": actual_output_lens,
@@ -501,33 +501,33 @@ async def benchmark(
     ):
         # This function print and add statistics of the specified
         # metric.
-        if metric_attribute_name == "otpr":
+        if metric_attribute_name == "output_throughput_per_user":
             print("{s:{c}^{n}}".format(s=metric_header, n=50, c="-"))
             print(
                 "{:<40} {:<10.2f}".format(
-                    f"Mean {metric_name} (t/s):",
-                    getattr(metrics, f"mean_{metric_attribute_name}_ts"),
+                    f"Mean {metric_name} (tok/s):",
+                    getattr(metrics, f"mean_{metric_attribute_name}"),
                 )
             )
             print(
                 "{:<40} {:<10.2f}".format(
-                    f"Median {metric_name} (t/s):",
-                    getattr(metrics, f"median_{metric_attribute_name}_ts"),
+                    f"Median {metric_name} (tok/s):",
+                    getattr(metrics, f"median_{metric_attribute_name}"),
                 )
             )
-            result[f"mean_{metric_attribute_name}_t/s"] = getattr(
-                metrics, f"mean_{metric_attribute_name}_ts"
+            result[f"mean_{metric_attribute_name}"] = getattr(
+                metrics, f"mean_{metric_attribute_name}"
             )
-            result[f"median_{metric_attribute_name}_t/s"] = getattr(
-                metrics, f"median_{metric_attribute_name}_ts"
+            result[f"median_{metric_attribute_name}"] = getattr(
+                metrics, f"median_{metric_attribute_name}"
             )
-            result[f"std_{metric_attribute_name}_t/s"] = getattr(
-                metrics, f"std_{metric_attribute_name}_ts"
+            result[f"std_{metric_attribute_name}"] = getattr(
+                metrics, f"std_{metric_attribute_name}"
             )
-            for p, value in getattr(metrics, f"percentiles_{metric_attribute_name}_ts"):
+            for p, value in getattr(metrics, f"percentiles_{metric_attribute_name}"):
                 p_word = str(int(p)) if int(p) == p else str(p)
-                print("{:<40} {:<10.2f}".format(f"P{p_word} {metric_name} (t/s):", value))
-                result[f"p{p_word}_{metric_attribute_name}_ts"] = value
+                print("{:<40} {:<10.2f}".format(f"P{p_word} {metric_name} (tok/s):", value))
+                result[f"p{p_word}_{metric_attribute_name}"] = value
                 
         else:
             print("{s:{c}^{n}}".format(s=metric_header, n=50, c="-"))
@@ -561,7 +561,7 @@ async def benchmark(
     process_one_metric("tpot", "TPOT", "Time per Output Token (excl. 1st token)")
     process_one_metric("itl", "ITL", "Inter-token Latency")
     process_one_metric("e2el", "E2EL", "End-to-end Latency")
-    process_one_metric("otpr","OTPR","Output Throughput per user")
+    process_one_metric("output_throughput_per_user","OTPU","Output Throughput per user")
 
     print("=" * 50)
 
@@ -915,7 +915,7 @@ def run_benchmark(model, input_len, output_len, num_prompts, base_url):
             self.percentile_metrics = "ttft,tpot,itl,e2el"
             self.metric_percentiles = "95"
             self.base_url = base_url
-            self.endpoint = "/completions"
+            self.endpoint = "/chat/completions"
             self.best_of = 1
             self.use_beam_search = False
             self.dataset = None
