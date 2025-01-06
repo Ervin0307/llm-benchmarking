@@ -1031,10 +1031,10 @@ def get_args():
     return args
 
 
-def run_benchmark(model, input_len,std_input_len, output_len, num_prompts, base_url):
+def run_benchmark(model, input_len, output_len, num_prompts, base_url):
     # args = get_args()
     class BenchmarkArgs:
-        def __init__(self, model, input_len, std_input_len,output_len, num_prompts, base_url):
+        def __init__(self, model, input_len, output_len, num_prompts, base_url):
             self.model = model
             self.tokenizer = model
             self.num_prompts = num_prompts
@@ -1044,7 +1044,7 @@ def run_benchmark(model, input_len,std_input_len, output_len, num_prompts, base_
             self.percentile_metrics = "ttft,tpot,itl,e2el"
             self.metric_percentiles = "95"
             self.base_url = base_url
-            self.endpoint = "/chat/completions"
+            self.endpoint = "/completions"
             self.best_of = 1
             self.use_beam_search = False
             self.dataset = None
@@ -1069,7 +1069,7 @@ def run_benchmark(model, input_len,std_input_len, output_len, num_prompts, base_
             self.result_dir = "./results"
             self.result_filename = None
 
-    args = BenchmarkArgs(model, input_len,std_input_len,output_len, num_prompts, base_url)
+    args = BenchmarkArgs(model, input_len, output_len, num_prompts, base_url)
 
     return main(args)
 
