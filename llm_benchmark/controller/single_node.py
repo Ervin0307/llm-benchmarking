@@ -25,6 +25,7 @@ def build_docker_run_command(
         [
             f"--{k}={v}" if not isinstance(v, bool) else f"--{k}"
             for k, v in extra_args.items()
+            if not isinstance(v, bool) or v is True
         ]
         if extra_args
         else []
@@ -74,6 +75,7 @@ def deploy_model(
     device: str = "cpu",
     profile_model: bool = False,
 ) -> str:
+    container_id = None
     try:
         docker_command = build_docker_run_command(
             docker_image,
@@ -117,6 +119,8 @@ def deploy_model(
         raise
     except Exception as e:
         print(f"Error deploying model: {e}")
+        if container_id:
+            remove_container(container_id)
         raise
 
 

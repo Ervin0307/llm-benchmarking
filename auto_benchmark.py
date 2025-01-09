@@ -2,6 +2,7 @@ import os
 import yaml
 import uuid
 import json
+import time
 import hashlib
 import argparse
 import threading
@@ -200,6 +201,9 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
     except Exception as e:
         print(f"Error during {engine_config_id} warm up: {e}")
         checkpoint[engine_config_hash]["status"] = "warmup_failed"
+        if container_id:
+            single_node_controller.remove_container(container_id)
+
         return checkpoint
 
     log_metrics_task = None
@@ -283,8 +287,6 @@ def run_benchmark(args, engine_config, run_config, checkpoint=None):
             )
 
             results.append(result)
-
-            import time
 
             time.sleep(1)
 
