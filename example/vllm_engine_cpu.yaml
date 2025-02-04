@@ -3,7 +3,7 @@ args:
   port: 8000
   tensor-parallel-size:
     # - 1
-    - 2
+    #- 2
     - 4
   block-size:
     - 8
@@ -20,6 +20,7 @@ args:
     - 64
     - 128
     - 256
+  device: cpu
   # rope-scaling: 
   #   - '{"rope_type":"llama3","factor":1.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
   #   - '{"rope_type":"llama3","factor":2.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}'
@@ -41,7 +42,7 @@ envs:
   #   - 40
   #   - 80
   VLLM_ATTENTION_BACKEND: TORCH_SDPA
-  VLLM_CPU_OMP_THREADS_BIND: '0-53|56-109'
+  VLLM_CPU_OMP_THREADS_BIND: '0-31|128-159|32-63|160-191'
 
 run_config:
   mean_input_tokens: 128

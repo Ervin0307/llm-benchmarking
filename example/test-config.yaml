@@ -1,0 +1,46 @@
+args:
+  model: meta-llama/Meta-Llama-3.1-8B-Instruct
+  port: 8000
+  tensor-parallel-size:
+    # - 1
+    # - 2
+    - 4
+  # max-model-len: 8192
+  enable-prefix-caching: true
+  disable-sliding-window: true
+
+
+envs:
+  VLLM_CPU_KVCACHE_SPACE:
+    - 80
+  #   - 16
+  #   - 40
+  #   - 80
+  VLLM_ATTENTION_BACKEND: TORCH_SDPA
+  VLLM_CPU_OMP_THREADS_BIND: '31-128-159|32-63|160-191'
+
+
+run_config:
+  token_pairs:
+    - 50,200
+    - 100,150
+    - 150,100
+    - 200,50
+    - 100,400
+    - 200,300
+    - 300,200
+    - 400,100
+    - 200,800
+    - 400,600
+    - 600,400
+    - 800,200
+    - 400,1600
+    - 800,1200
+    - 1200,800
+    - 1600,400
+  num_concurrent_requests: 
+    - 1
+    - 8
+    - 16
+    - 32
+    - 64

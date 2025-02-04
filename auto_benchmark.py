@@ -164,6 +164,7 @@ def create_engine_config(engine_config_file):
 
 
 def run_benchmark(args, engine_config, run_config, checkpoint=None):
+    print("Running Benchmark")
     checkpoint = checkpoint or {}
     base_url = f"http://localhost:{engine_config['args']['port']}/v1"
     model = engine_config["args"].get("model") or engine_config["args"].get("model-path")
@@ -407,6 +408,7 @@ if __name__ == "__main__":
     )
     args.add_argument(
         "--run-benchmark",
+        default="True",
         action="store_true",
         help="Whether to run the benchmark.",
     )
@@ -429,12 +431,13 @@ if __name__ == "__main__":
     args.add_argument(
         "--device",
         type=str,
-        default="gpu",
+        default="cpu",
         choices=["gpu", "cpu", "hpu"],
         help="Whether to profile on gpu or cpu.",
     )
     args.add_argument(
         "--cpu-only",
+        default="True",
         action="store_true",
         help="Whether to profile only on cpu.",
     )
@@ -460,5 +463,5 @@ if __name__ == "__main__":
         help="Checkpoint file path to resume from, if not set and  resume=True, fallbacks to the latest",
     )
     args = args.parse_args()
-
+    print(args)
     main(args)
